@@ -49,6 +49,11 @@ CREATE TRIGGER trg_immutable_source_registry
 BEFORE UPDATE OR DELETE ON source_registry
 FOR EACH ROW EXECUTE FUNCTION block_source_mutation();
 
+-- Row triggers do not fire on TRUNCATE, so it needs its own statement trigger.
+CREATE TRIGGER trg_immutable_source_registry_truncate
+BEFORE TRUNCATE ON source_registry
+FOR EACH STATEMENT EXECUTE FUNCTION block_source_mutation();
+
 -- Allocates S-<n> ids for Moby harvests, whose records carry no source_id. Starts
 -- high to stay clear of ids assigned by hand through fetch_and_seal_source().
 CREATE SEQUENCE source_registry_harvest_id_seq START WITH 1000000;

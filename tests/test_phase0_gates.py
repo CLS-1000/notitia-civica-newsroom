@@ -1,6 +1,6 @@
 """Phase 0 gates, exercised against a real PostgreSQL 18 with pgvector.
 
-Set NOTITIA_TEST_DSN to use an existing server; a throwaway database is created
+Set NOTITIA_TEST_DSN to use an existing server; throwaway databases are created
 there and dropped afterwards. Otherwise a private cluster is started for the run,
 using a system pgvector or the copy from scripts/bootstrap_test_pgvector.sh.
 """
@@ -151,16 +151,40 @@ def server_dsn() -> Iterator[str]:
 
 
 @pytest.fixture(scope="session")
-def ledger_dsn(server_dsn: str) -> Iterator[str]:
-    """Yield a DSN for a throwaway database with the migration applied."""
-    name = f"notitia_test_{secrets.token_hex(6)}"
+def template_database(server_dsn: str) -> Iterator[str]:
+    """Yield the name of a throwaway database with the migration applied."""
+    name = f"notitia_template_{secrets.token_hex(6)}"
     with psycopg.connect(server_dsn, autocommit=True) as admin:
         admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
-    dsn = make_conninfo(server_dsn, dbname=name)
     try:
+        dsn = make_conninfo(server_dsn, dbname=name)
         with psycopg.connect(dsn, autocommit=True) as conn:
             conn.execute(MIGRATION.read_text(encoding="utf-8").encode())
-        yield dsn
+        yield name
+    finally:
+        with psycopg.connect(server_dsn, autocommit=True) as admin:
+            admin.execute(
+                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
+            )
+
+
+@pytest.fixture
+def ledger_dsn(server_dsn: str, template_database: str) -> Iterator[str]:
+    """Yield a DSN for a fresh clone of the migrated database.
+
+    Each test gets its own clone because the ledger is append-only by design and
+    cannot be emptied in place, and because the CLI commits on its own connection,
+    which rules out rolling back a shared transaction.
+    """
+    name = f"notitia_test_{secrets.token_hex(6)}"
+    with psycopg.connect(server_dsn, autocommit=True) as admin:
+        admin.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                sql.Identifier(name), sql.Identifier(template_database)
+            )
+        )
+    try:
+        yield make_conninfo(server_dsn, dbname=name)
     finally:
         with psycopg.connect(server_dsn, autocommit=True) as admin:
             admin.execute(
@@ -172,8 +196,6 @@ def ledger_dsn(server_dsn: str) -> Iterator[str]:
 def db(ledger_dsn: str) -> Iterator[Conn]:
     with psycopg.connect(ledger_dsn, autocommit=True) as conn:
         yield conn
-        conn.execute("TRUNCATE articles, source_registry, triage_records")
-        conn.execute("TRUNCATE sociology_telemetry.narrative_observations")
 
 
 def insert_article(conn: Conn, **overrides: Any) -> str:
@@ -432,6 +454,8 @@ def insert_source(conn: Conn, source_id: str = "S-1") -> None:
             f"UPDATE source_registry SET raw_sha256 = '{'c' * 64}'", id="hash"
         ),
         pytest.param("DELETE FROM source_registry", id="delete"),
+        pytest.param("TRUNCATE source_registry", id="truncate"),
+        pytest.param("TRUNCATE articles, source_registry", id="truncate-multi"),
     ],
 )
 def test_source_registry_refuses_mutation(db: Conn, statement: str) -> None:
