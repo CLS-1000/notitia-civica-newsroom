@@ -144,6 +144,17 @@ def excerpt_is_verbatim(excerpt: str, text: str) -> bool:
     return any(wanted in normalize_whitespace(item) for item in _json_strings(parsed))
 
 
+def error_in_body(payload: Any) -> str | None:
+    """Return the error reported inside a JSON body, if any.
+
+    ArcGIS reports failures in the body of an HTTP 200, which would otherwise read
+    as an empty result.
+    """
+    if isinstance(payload, dict) and isinstance(payload.get("error"), dict):
+        return str(payload["error"].get("message", "error in response body"))
+    return None
+
+
 def host_of(url: str) -> str:
     return urlsplit(url).hostname or ""
 
@@ -403,6 +414,9 @@ class LazLongAdapter(ABC):
                 raise PollError(f"invalid JSON: {error}", retryable=True) from error
             if not isinstance(payload, dict):
                 raise PollError("response is not a JSON object", retryable=False)
+            problem = error_in_body(payload)
+            if problem:
+                raise PollError(problem, retryable=True)
             items.extend(self.extract_items(request, payload))
             current = self.next_request(current, payload)
         return items
@@ -437,6 +451,17 @@ class LazLongAdapter(ABC):
         name = f"{self.adapter_name}:{self.record_key(raw_record)}"
         return str(uuid.uuid5(_LEAD_NAMESPACE, name))
 
+    @staticmethod
+    def _reject_error_payload(blob: Path) -> None:
+        """Refuse an upstream error message as evidence. It was never registered."""
+        try:
+            problem = error_in_body(json.loads(blob.read_bytes()))
+        except ValueError:
+            return
+        if problem:
+            blob.unlink()
+            raise PollError(f"source returned an error: {problem}", retryable=True)
+
     def _seal(
         self, target: EvidenceTarget, allocate_source_id: Callable[[], str]
     ) -> SourceArtifact:
@@ -448,6 +473,7 @@ class LazLongAdapter(ABC):
             timeout=self._timeout,
             transport=self._transport,
         )
+        self._reject_error_payload(Path(receipt["archive_path"]))
         return SourceArtifact(
             source_id=receipt["source_id"],
             tier=receipt["tier"],

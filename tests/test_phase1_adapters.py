@@ -618,6 +618,14 @@ def test_malformed_json_is_spooled(tmp_path: Path) -> None:
     assert len(spool_rows(tmp_path)) == 1
 
 
+def test_error_inside_http_200_is_spooled_not_read_as_empty(tmp_path: Path) -> None:
+    body = {"error": {"code": 400, "message": "Invalid URL"}}
+    router = Router({ProbeAdapter.url: httpx.Response(200, json=body)})
+
+    assert ProbeAdapter(**options(tmp_path, router)).poll_sources() == []
+    assert spool_rows(tmp_path) == [("probe", "items", 1, "Invalid URL")]
+
+
 def test_credentials_never_reach_the_spool(tmp_path: Path) -> None:
     router = Router({ProbeAdapter.url: UNAVAILABLE})
     ProbeAdapter(secret=API_KEY, **options(tmp_path, router)).poll_sources()
@@ -1260,6 +1268,19 @@ def test_delos_chokepoint_lead(tmp_path: Path) -> None:
     assert lead.source_artifacts[0].metadata["kind"] == "portwatch_transits"
     assert "Suez Canal" in lead.paste_ready_prompt
     assert "-20.0%" in lead.paste_ready_prompt
+
+
+def test_delos_never_seals_an_error_body_as_evidence(tmp_path: Path) -> None:
+    router = delos_router(recalls=[], transits=transit_rows(100, 80))
+    router.routes[f"{PORTWATCH_URL}?where=portid"] = {
+        "error": {"code": 400, "message": "Invalid URL"}
+    }
+
+    result = delos(tmp_path, router).harvest(counter())
+
+    assert result.packets == []
+    assert "Invalid URL" in result.errors[0]
+    assert list((tmp_path / "archive").iterdir()) == []
 
 
 def test_delos_repeat_drop_in_same_week_is_one_lead(tmp_path: Path) -> None:
