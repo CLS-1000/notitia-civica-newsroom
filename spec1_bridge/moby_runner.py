@@ -55,7 +55,7 @@ MOBY_SOURCE_TIER = "tier_4_unverified"
 
 _DOMAIN_PATTERN = re.compile(r"[a-z0-9]([a-z0-9.-]*[a-z0-9])?")
 
-_INSERT_SOURCE = """
+INSERT_SOURCE = """
     INSERT INTO source_registry
         (source_id, url, domain, tier, raw_sha256, archive_path,
          verbatim_text, retrieved_at)
@@ -216,7 +216,7 @@ def _parse_line(line: str) -> SourceEntry:
         raise ManifestError(details) from error
 
 
-def _allocate_source_id(conn: Connection) -> str:
+def allocate_source_id(conn: Connection) -> str:
     row = conn.execute("SELECT nextval('source_registry_harvest_id_seq')").fetchone()
     assert row is not None
     return f"S-{row[0]}"
@@ -244,10 +244,10 @@ def _register(
         existing = _find_harvested_source(conn, entry)
         if existing is not None:
             return "already_registered", existing
-        source_id = _allocate_source_id(conn)
+        source_id = allocate_source_id(conn)
 
     cursor = conn.execute(
-        _INSERT_SOURCE,
+        INSERT_SOURCE,
         (
             source_id,
             entry.url,

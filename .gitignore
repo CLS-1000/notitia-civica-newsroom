@@ -11,3 +11,6 @@ archive/
 
 # Locally unpacked test dependencies (scripts/bootstrap_test_pgvector.sh)
 .pgdev/
+
+# Local spool for failed polls
+data/

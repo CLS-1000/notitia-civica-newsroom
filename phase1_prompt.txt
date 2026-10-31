@@ -1,0 +1,54 @@
+Build all deliverables for Phase 1 of Notitia Civica. Write production-ready, typed Python 3.12 code conforming strictly to PEP 8, ruff, and mypy. Use mocked API payloads in tests so tests run offline without network access or live API keys. When finished, run 'uv run pytest tests/test_phase1_adapters.py' and verify all tests pass.
+
+DATA CONTRACTS & STANDARDS:
+- Use the exact dataclasses from the global standard:
+  @dataclass(frozen=True)
+  class SourceArtifact:
+      source_id: str                  # Format: S-XXXX
+      tier: str                      # 'tier_1_primary', 'tier_2_institutional', etc.
+      origin_url: str
+      sha256_hash: str
+      raw_payload_path: str
+      captured_at: datetime
+      metadata: Dict[str, Any] = field(default_factory=dict)
+
+  @dataclass
+  class Spec1LeadPacket:
+      lead_id: str
+      timestamp: datetime
+      adapter_name: str
+      anomaly_score: float           # 0.0 to 100.0
+      evidence_bar_passed: bool
+      source_artifacts: List[SourceArtifact]
+      verbatim_excerpts: Dict[str, str]  # {source_id: text_span}
+      paste_ready_prompt: str
+      analysis_tier: str = "rule_based"
+
+SPECIFICATION:
+1. spec1_bridge/adapters/base_lazlong.py:
+   - Abstract Base Class `LazLongAdapter` defining:
+     - `poll_sources() -> List[Dict[str, Any]]` (with exponential backoff and SQLite spooling to `data/spool_fallback.db` on failure).
+     - `compute_signal_score(raw_record: Dict[str, Any]) -> float` (0.0 to 100.0).
+     - `verify_evidence_bar(artifacts: List[SourceArtifact]) -> bool`.
+     - `build_paste_ready_prompt(record: Dict[str, Any], artifacts: List[SourceArtifact]) -> str`.
+
+2. spec1_bridge/adapters/ubik_oregon.py:
+   - Ingests Oregon Legislature OLIS OData (measures, committee hearings, Legislative Fiscal Office fiscal impact summaries).
+   - Scoring signals: fiscal impact >$1M, emergency clause presence, gut-and-stuff amendments.
+   - Evidence bar: requires primary OLIS measure text or official LFO fiscal statement.
+
+3. spec1_bridge/adapters/seldon_civic.py:
+   - Ingests Congress.gov API v3 bills and roll-call votes.
+   - Enforces strict statutory evidence bar: requires enrolled PDF/XML text before emitting a lead.
+
+4. spec1_bridge/adapters/delos_econ.py:
+   - Connects openFDA Enforcement Class I/II recalls with openFDA Drug Shortages to identify single-source generic bottlenecks.
+   - Connects IMF PortWatch chokepoint vessel transit drops (>15% 30-day divergence).
+
+5. spec1_bridge/mycroft_triage.py:
+   - Worker running SPEC-1's 4-gate deterministic triage (Deduplication, Authority, Corroboration, Freshness/Anomaly).
+   - Enriches leads via local Ollama (`httpx` to `http://localhost:11434/api/generate` with timeout and offline test mock).
+   - Stamps analysis_tier='rule_based' and writes to `triage_records` in radiant_ledger.
+
+6. tests/test_phase1_adapters.py:
+   - Comprehensive offline pytest suite testing adapter polling, SQLite spool fallback, evidence bar rejections, Ollama prompt generation, and triage records
