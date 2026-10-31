@@ -38,7 +38,8 @@ FDA_HOST: Final = "api.fda.gov"
 FDA_PAGE_SIZE: Final = 1000
 PORTWATCH_PAGE_SIZE: Final = 1000
 RECALL_LOOKBACK_DAYS: Final = 90
-TRANSIT_LOOKBACK_DAYS: Final = 60
+# Newest rows first, so 2000 rows is about 70 days across all 28 chokepoints.
+PORTWATCH_MAX_ROWS: Final = 2000
 RECENT_WINDOW_DAYS: Final = 7
 BASELINE_WINDOW_DAYS: Final = 30
 DIVERGENCE_THRESHOLD: Final = 0.15
@@ -117,7 +118,6 @@ class DelosEconAdapter(LazLongAdapter):
     def poll_requests(self) -> list[PollRequest]:
         today = self._clock().date()
         recall_start = (today - timedelta(days=RECALL_LOOKBACK_DAYS)).strftime("%Y%m%d")
-        transit_start = (today - timedelta(days=TRANSIT_LOOKBACK_DAYS)).isoformat()
         return [
             PollRequest(
                 "enforcement",
@@ -139,9 +139,9 @@ class DelosEconAdapter(LazLongAdapter):
                 "transits",
                 PORTWATCH_URL,
                 {
-                    "where": f"date >= DATE '{transit_start}'",
-                    "outFields": "date,portid,portname,n_total",
-                    "orderByFields": "ObjectId",
+                    "where": "1=1",
+                    "outFields": "*",
+                    "orderByFields": "date DESC",
                     "resultRecordCount": str(PORTWATCH_PAGE_SIZE),
                     "resultOffset": "0",
                     "f": "json",
@@ -168,6 +168,8 @@ class DelosEconAdapter(LazLongAdapter):
             if not payload.get("exceededTransferLimit"):
                 return None
             offset = int(request.params["resultOffset"]) + PORTWATCH_PAGE_SIZE
+            if offset >= PORTWATCH_MAX_ROWS:
+                return None
             return PollRequest(
                 request.name,
                 request.url,

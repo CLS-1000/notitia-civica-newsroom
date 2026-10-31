@@ -306,6 +306,8 @@ def congress_router(
     )
 
 
+PORTWATCH_POLL = f"{PORTWATCH_URL}?where=1%3D1"
+
 FDA_RECALL = {
     "recall_number": "D-0100-2026",
     "classification": "Class I",
@@ -364,9 +366,7 @@ def delos_router(
             ),
             f"{ENFORCEMENT_URL}?search=recall_number": fda_payload([FDA_RECALL]),
             f"{SHORTAGES_URL}?search=generic_name": fda_payload([FDA_SHORTAGE]),
-            f"{PORTWATCH_URL}?where=date": {
-                "features": transits if transits is not None else []
-            },
+            PORTWATCH_POLL: {"features": transits if transits is not None else []},
             f"{PORTWATCH_URL}?where=portid": {"features": []},
         }
     )
@@ -1214,11 +1214,43 @@ def test_delos_flags_drops_strictly_beyond_15_percent(
     assert bool(delos(tmp_path, router).poll_sources()) is flagged
 
 
-def test_delos_portwatch_query_uses_date_literal(tmp_path: Path) -> None:
+def test_delos_portwatch_query_uses_standard_esri_parameters(tmp_path: Path) -> None:
     router = delos_router()
     delos(tmp_path, router).poll_sources()
-    where = router.calls_to(f"{PORTWATCH_URL}?where=date")[0].url.params["where"]
-    assert where == "date >= DATE '2026-08-16'"
+
+    params = router.calls_to(PORTWATCH_POLL)[0].url.params
+    assert params["where"] == "1=1"
+    assert params["outFields"] == "*"
+    assert params["f"] == "json"
+    assert params["orderByFields"] == "date DESC"
+
+
+def test_delos_portwatch_stops_paging_at_the_row_cap(tmp_path: Path) -> None:
+    def always_more(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"features": [], "exceededTransferLimit": True})
+
+    router = delos_router()
+    router.routes[PORTWATCH_POLL] = always_more
+
+    delos(tmp_path, router).poll_sources()
+
+    offsets = [
+        item.url.params["resultOffset"] for item in router.calls_to(PORTWATCH_POLL)
+    ]
+    assert offsets == ["0", "1000"]
+
+
+def test_delos_portwatch_outage_is_spooled_and_replayed(tmp_path: Path) -> None:
+    failing = delos_router()
+    failing.routes[PORTWATCH_POLL] = {"error": {"code": 400, "message": "Invalid URL"}}
+    delos(tmp_path, failing).poll_sources()
+    assert spool_rows(tmp_path) == [("delos_econ", "transits", 1, "Invalid URL")]
+
+    healthy = delos_router(recalls=[], transits=transit_rows(100, 80))
+    records = delos(tmp_path, healthy).poll_sources()
+
+    assert [item["kind"] for item in records] == ["chokepoint_drop"]
+    assert spool_rows(tmp_path) == []
 
 
 def test_delos_portwatch_follows_transfer_limit(tmp_path: Path) -> None:
@@ -1235,12 +1267,12 @@ def test_delos_portwatch_follows_transfer_limit(tmp_path: Path) -> None:
         )
 
     router = delos_router()
-    router.routes[f"{PORTWATCH_URL}?where=date"] = paged
+    router.routes[PORTWATCH_POLL] = paged
 
     records = delos(tmp_path, router).poll_sources()
 
     assert any(item["kind"] == "chokepoint_drop" for item in records)
-    assert len(router.calls_to(f"{PORTWATCH_URL}?where=date")) == 2
+    assert len(router.calls_to(PORTWATCH_POLL)) == 2
 
 
 def test_delos_openfda_paginates_by_skip(tmp_path: Path) -> None:
