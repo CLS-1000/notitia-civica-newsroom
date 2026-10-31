@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Sealed evidence is preserved outside version control
+archive/
+
+# Locally unpacked test dependencies (scripts/bootstrap_test_pgvector.sh)
+.pgdev/

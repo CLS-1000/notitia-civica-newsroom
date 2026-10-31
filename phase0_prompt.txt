@@ -1,0 +1,22 @@
+Build all 4 deliverables for Phase 0 of Notitia Civica. Write production-ready, typed Python 3.12 and PostgreSQL 18 code. Do not use placeholders or truncated code. When finished, run 'uv run pytest tests/test_phase0_gates.py' and verify all tests pass.
+
+SPECIFICATION:
+1. migrations/001_init_ledger.sql:
+   - Extensions: vector, pgcrypto.
+   - Custom ENUMs: analysis_tier_enum ('rule_based', 'llm_verified'), source_tier_enum ('tier_1_primary', 'tier_2_institutional', 'tier_3_secondary', 'tier_4_unverified'), pub_status_enum ('harvested', 'triaged', 'drafting', 'compliance_hold', 'approved', 'published', 'retracted').
+   - source_registry table: source_id (PK, e.g. S-1042), url, domain, tier, raw_sha256, archive_path, verbatim_text, retrieved_at.
+   - triage_records table: record_id (UUID PK), adapter_name, subject_domain, anomaly_score, decomposition_receipt (JSONB), paste_ready_prompt, source_ids (VARCHAR[]), analysis_tier (default 'rule_based'), created_at.
+   - articles table: article_id (UUID PK), slug, section, badge_type, headline, deck, body_markdown, analysis_tier (default 'rule_based'), status (default 'drafting'), human_approved (default FALSE), editor_name, editorial_proof_hash, published_at.
+   - Trigger enforce_publication_gates(): Physically blocks status='published' if analysis_tier='rule_based' OR human_approved is not TRUE OR editorial_proof_hash is NULL.
+   - Quarantined schema sociology_telemetry: narrative_observations table for Domains 5 & 6.
+
+2. newsroom/harlan_eternity/custody.py:
+   - Production Python module implementing fetch_and_seal_source(url: str, source_id: str, tier: str) -> dict.
+   - Uses httpx with timeout and User-Agent 'NotitiaCivica-SPEC1/1.0 (+https://notitiacivica.com; contact@evastararcana.com)'.
+   - Writes raw payload to archive/warc/{source_id}_{timestamp}_{sha256[:12]}.blob, computes SHA-256 digest, and returns custody dictionary.
+
+3. spec1_bridge/moby_runner.py:
+   - Python runner that parses harvest_manifest.jsonl, validates each record's SHA-256 against disk, and registers raw audit payloads in source_registry.
+
+4. tests/test_phase0_gates.py:
+   - Pytest suite testing all publication-blocking database triggers, valid promotions, and fetch_and_seal_source() SHA-256 verification.
