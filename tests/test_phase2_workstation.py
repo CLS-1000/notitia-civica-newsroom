@@ -126,8 +126,12 @@ def test_neutral_body_passes() -> None:
         "his political agenda",
         "a nefarious scheme",
         "a corrupt scheme",
+        "a kickback scheme",
+        "a fraudulent scheme",
         "plot to",
+        "plots to",
         "plotted to",
+        "plotting to",
     ],
 )
 def test_loaded_language_is_flagged(phrase: str) -> None:
@@ -349,9 +353,17 @@ def test_other_badges_keep_the_ceiling_on_one_citation(badge: str) -> None:
     )
 
 
-def test_fact_brief_with_several_citations_keeps_the_ceiling() -> None:
+def test_fact_brief_may_cite_one_primary_document_repeatedly() -> None:
+    issues = check_source_diversity(
+        ["S-1", "S-1", "S-1"], {}, badge_type="FACT BRIEF", source_tiers=PRIMARY
+    )
+    assert issues == []
+
+
+def test_fact_brief_with_two_sources_keeps_the_ceiling() -> None:
+    both_primary = PRIMARY | {"S-2": "tier_1_primary"}
     assert check_source_diversity(
-        ["S-1", "S-1"], ROLES, badge_type="FACT BRIEF", source_tiers=PRIMARY
+        ["S-1", "S-2"], {}, badge_type="FACT BRIEF", source_tiers=both_primary
     )
 
 

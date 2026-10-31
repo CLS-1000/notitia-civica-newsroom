@@ -29,8 +29,8 @@ _LOADED_TERMS: Final = ("admits", "concedes")
 # flagged. "Committee agenda" and "plot of land" pass.
 _LOADED_FRAMING: Final = (
     re.compile(r"\b(hidden|secret|political)\s+agenda\b", re.IGNORECASE),
-    re.compile(r"\b(nefarious|corrupt)\s+scheme\b", re.IGNORECASE),
-    re.compile(r"\bplot(ted)?\s+to\b", re.IGNORECASE),
+    re.compile(r"\b(kickback|fraudulent|nefarious|corrupt)\s+scheme\b", re.IGNORECASE),
+    re.compile(r"\bplott?(ing|s|ed)?\s+to\b", re.IGNORECASE),
 )
 _ALLEGATION_TERMS: Final = (
     "bribed",
@@ -249,14 +249,14 @@ def check_source_diversity(
 ) -> list[str]:
     """Require that no role category exceeds 60% of citations.
 
-    The one exception is a FACT BRIEF whose only citation is a Tier 1 primary
-    document. Every other badge, including DEEP EXPLAINER and INVESTIGATION, is
-    held to the ceiling however few citations it has.
+    The one exception is a FACT BRIEF that cites a single Tier 1 primary document,
+    however many times it cites it. Every other badge, including DEEP EXPLAINER and
+    INVESTIGATION, is held to the ceiling however few citations it has.
     """
     if not citations:
         return ["no citations to assess"]
     if (
-        len(citations) == 1
+        len(set(citations)) == 1
         and normalize_badge(badge_type) == SINGLE_SOURCE_BADGE
         and (source_tiers or {}).get(citations[0]) == PRIMARY_TIER
     ):
