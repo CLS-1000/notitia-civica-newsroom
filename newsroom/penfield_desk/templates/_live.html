@@ -1,0 +1,15 @@
+<div id="live">
+  <h2>dors_venabili Gates</h2>
+  {% for gate in gates %}
+  <div class="gate{% if gate.passed %} ok{% endif %}" data-gate="{{ gate.name }}">
+    <span class="gate-name">{{ gate.label }}</span>
+    {% if gate.issues %}<ul>{% for issue in gate.issues %}<li>{{ issue }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% endfor %}
+  {% if refused %}<p class="refused" role="alert">Publication refused.{% for issue in sign_issues %} {{ issue }}{% endfor %}</p>{% endif %}
+  <p class="muted">{{ unticked }} human check{{ '' if unticked == 1 else 's' }} remaining</p>
+  <button class="publish" id="sign-button" type="button"
+          hx-post="/articles/{{ article.slug }}/sign" hx-include="#draft-form"
+          hx-target="#live" hx-swap="outerHTML"{% if not can_sign %} disabled{% endif %}>Sign &amp; Publish</button>
+</div>
+{% if live_update %}<div class="preview" id="preview" hx-swap-oob="true" aria-label="Paragraph citation status">{% include "_paragraphs.html" %}</div>{% endif %}

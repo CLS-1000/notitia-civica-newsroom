@@ -23,7 +23,7 @@ from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-MIGRATION = REPO_ROOT / "migrations" / "001_init_ledger.sql"
+MIGRATIONS = sorted((REPO_ROOT / "migrations").glob("*.sql"))
 LOCAL_PGVECTOR = REPO_ROOT / ".pgdev" / "pgvector"
 PG_BIN = Path("/usr/lib/postgresql/18/bin")
 
@@ -146,7 +146,8 @@ def template_database(server_dsn: str) -> Iterator[str]:
     try:
         dsn = make_conninfo(server_dsn, dbname=name)
         with psycopg.connect(dsn, autocommit=True) as conn:
-            conn.execute(MIGRATION.read_text(encoding="utf-8").encode())
+            for migration in MIGRATIONS:
+                conn.execute(migration.read_text(encoding="utf-8").encode())
         yield name
     finally:
         with psycopg.connect(server_dsn, autocommit=True) as admin:

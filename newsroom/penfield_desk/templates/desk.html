@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Penfield Desk</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/desk.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/desk.js" defer></script>
+</head>
+<body>
+<main class="desk">
+  <section class="pane" aria-label="Leads and sources">
+    <div class="queue">
+      <h2>SPEC-1 Lead Queue</h2>
+      {% for item in leads %}
+      <div class="lead{% if item.slug and article and item.slug == article.slug %} active{% endif %}">
+        <span>
+          {% if item.slug %}<a href="/?article={{ item.slug }}">{{ item.adapter_name }}</a>{% else %}{{ item.adapter_name }}{% endif %}
+          <span class="muted">{{ item.subject_domain }}</span>
+        </span>
+        <span class="score">{{ '%.1f' % item.anomaly_score }}</span>
+        {% if not item.slug %}
+        <button class="secondary" hx-post="/leads/{{ item.record_id }}/draft" hx-disabled-elt="this">Draft</button>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="muted">No leads in triage_records.</p>
+      {% endfor %}
+    </div>
+
+    <div class="receipt">
+      <h2>Why this was flagged</h2>
+      {% if lead %}
+      <p>Anomaly score <span class="score">{{ '%.1f' % lead.anomaly_score }}</span></p>
+      {% for gate in lead.decomposition_receipt.get('gates', []) %}
+      <div class="muted">{{ '✓' if gate.passed else '✕' }} {{ gate.gate }} {{ gate.reason }}</div>
+      {% endfor %}
+      {% set enrichment = lead.decomposition_receipt.get('enrichment') %}
+      {% if enrichment and enrichment.text %}
+      <p class="muted">Unverified model notes ({{ enrichment.model }}): {{ enrichment.text }}</p>
+      {% endif %}
+      {% else %}
+      <p class="muted">Select a lead.</p>
+      {% endif %}
+    </div>
+
+    <div class="viewer" id="viewer" tabindex="0">
+      <h2>Primary Source Documents</h2>
+      {% for source in sources %}
+      <article class="source" id="src-{{ source.source_id }}">
+        <header>{{ source.source_id }} · {{ source.tier }} · {{ source.domain }}</header>
+        <div class="muted proof">sha256 {{ source.raw_sha256 }}</div>
+        {% if source.sentences %}
+        <div class="source-text">{% for sentence in source.sentences %}<span id="src-{{ source.source_id }}-s{{ sentence.index }}">{{ sentence.text }}</span> {% endfor %}</div>
+        {% else %}
+        <p class="muted">This source has no text form. Open the sealed blob to read it.</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if article %}
+  <section class="pane" aria-label="Draft editor">
+    <h1>Draft: {{ article.status }}</h1>
+    <form class="editor" id="draft-form"
+          hx-post="/articles/{{ article.slug }}/validate"
+          hx-trigger="input delay:150ms, change, input delay:150ms from:.signoff, change from:.signoff"
+          hx-target="#live" hx-swap="outerHTML">
+      <label>Headline <input type="text" name="headline" value="{{ article.headline }}"></label>
+      <label>Badge
+        <select name="badge_type">
+          {% for badge in badges %}
+          <option value="{{ badge }}"{% if article.badge_type|upper == badge %} selected{% endif %}>{{ badge }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Deck <input type="text" name="deck" value="{{ article.deck or '' }}"></label>
+      <textarea name="body_markdown" aria-label="Body Markdown">{{ article.body_markdown }}</textarea>
+      <div class="preview" id="preview" aria-label="Paragraph citation status">{% include "_paragraphs.html" %}</div>
+      <div class="roles">
+        {% for source in sources %}
+        <label>{{ source.source_id }} role
+          <select name="role__{{ source.source_id }}">
+            <option value="">Unassigned</option>
+            {% for role in source_roles %}
+            <option value="{{ role }}"{% if article.source_roles.get(source.source_id) == role %} selected{% endif %}>{{ role }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% endfor %}
+      </div>
+      <label><input type="checkbox" name="is_private_person"{% if article.is_private_person %} checked{% endif %}> Story concerns a private person</label>
+      <label><input type="checkbox" name="right_of_reply_logged"{% if article.right_of_reply_logged %} checked{% endif %}> Right of reply logged</label>
+      <button type="button" class="secondary" hx-post="/articles/{{ article.slug }}/save" hx-include="#draft-form" hx-swap="none">Save draft</button>
+    </form>
+  </section>
+
+  <section class="pane pane-scroll" aria-label="Gates and sign-off">
+    {% include "_live.html" %}
+    <div class="signoff">
+      <h2>Human Sign-Off</h2>
+      {% for name, label in required_checks.items() %}
+      <label><input type="checkbox" form="draft-form" name="check__{{ name }}"> {{ label }}</label>
+      {% endfor %}
+      <label>Editor name <input type="text" form="draft-form" name="editor_name" autocomplete="name"></label>
+    </div>
+    {% if article.uncertainty_disclosures %}
+    <div>
+      <h2>Uncertainty Disclosures</h2>
+      <ul>{% for item in article.uncertainty_disclosures %}<li>{{ item }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+  </section>
+  {% else %}
+  <section class="pane"><h1>Draft</h1><p class="muted">Select a lead to begin.</p></section>
+  <section class="pane"><h1>Gates</h1></section>
+  {% endif %}
+</main>
+</body>
+</html>

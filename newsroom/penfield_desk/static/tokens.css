@@ -1,0 +1,25 @@
+/* Penfield Desk design tokens: tactical slate. */
+:root {
+  color-scheme: dark;
+  --pf-bg-base: #0f1419;
+  --pf-bg-pane: #151b22;
+  --pf-bg-raised: #1d252e;
+  --pf-bg-input: #0b1014;
+  --pf-bg-highlight-match: #ffe45c;
+  --pf-fg-highlight-match: #14171a;
+  --pf-border: #2c3744;
+  --pf-text: #dfe6ed;
+  --pf-text-muted: #93a1b0;
+  --pf-accent: #6cb6ff;
+  --pf-pass: #4fd18b;
+  --pf-fail: #ff7b72;
+  --pf-warn: #e3b341;
+  --pf-font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --pf-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --pf-font-read: Georgia, "Times New Roman", serif;
+  --pf-space-1: 4px;
+  --pf-space-2: 8px;
+  --pf-space-3: 12px;
+  --pf-space-4: 16px;
+  --pf-radius: 4px;
+}

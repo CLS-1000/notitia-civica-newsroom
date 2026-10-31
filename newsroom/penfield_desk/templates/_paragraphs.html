@@ -1,0 +1,12 @@
+{% for paragraph in paragraphs %}
+<div class="paragraph{% if paragraph.passed %} ok{% endif %}" data-paragraph="{{ paragraph.index }}">
+  {%- for segment in paragraph.segments -%}
+  {%- if segment.source_id -%}
+  <button type="button" class="tag{% if not segment.known %} unknown{% endif %}"{% if segment.known %} data-source="{{ segment.source_id }}"{% if segment.sentence is not none %} data-sentence="{{ segment.sentence }}"{% endif %}{% endif %}>{{ segment.text }}</button>
+  {%- else -%}
+  {{ segment.text }}
+  {%- endif -%}
+  {%- endfor -%}
+  {% for issue in paragraph.issues %}<div class="paragraph-issue">{{ issue }}</div>{% endfor %}
+</div>
+{% endfor %}

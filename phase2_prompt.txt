@@ -1,0 +1,37 @@
+Build all deliverables for Phase 2 of Notitia Civica. Write production-ready, typed Python 3.12, FastAPI, HTMX, and SQL code conforming strictly to PEP 8, ruff, and mypy. Use mocked Anthropic API calls in tests so the test suite runs offline without a live API key. When finished, run 'uv run pytest tests/test_phase2_workstation.py' and verify all tests pass.
+
+CANONICAL HASH STANDARD:
+SHA-256(body.strip() + "\n" + "\n".join(sorted(source_ids)) + "\n" + editor_signature + "\n" + timestamp_iso8601_utc)
+
+SPECIFICATION:
+1. newsroom/dors_venabili/gatekeeper.py:
+   - Deterministic verification functions:
+     - audit_headline(headline: str) -> list[str]: Blocks question marks, forward-referencing teasers ('Here is why', 'What to know'), and banned clickbait/rage-bait tokens (slams, blasts, destroys, bombshell, shocking, quietly, exposed, radical, extremist).
+     - audit_loaded_language(body: str) -> list[str]: Flags weasel words ('critics say', 'experts say') and loaded framing verbs (admits, concedes, scheme, plot, agenda).
+     - verify_grounding(body: str, source_texts: dict[str, str]) -> dict: Verifies every paragraph contains at least one valid [S-XXXX] tag, and verifies that every direct quote inside double quotes "..." exists verbatim (with normalized whitespace) inside the cited source's text.
+     - scrub_pii_and_defamation(body: str, is_private_person: bool, right_of_reply_logged: bool) -> list[str]: Flags unredacted PII patterns (SSNs, non-business addresses, phone numbers) and blocks unverified criminal/fraud allegations against private persons unless right_of_reply_logged=True.
+     - check_source_diversity(citations: list[str], roles: dict[str, str]) -> list[str]: Enforces that no single role category exceeds 60% of total citations.
+
+2. newsroom/penfield_desk/claude_drafter.py:
+   - Client calling Anthropic Claude API (claude-sonnet-4-5) with temperature=0.1.
+   - Constrained system prompt that forces output to cite ONLY provided SourceArtifact IDs [S-XXXX] and structures output into: Headline, Deck, Body Markdown, Verified Claims list, and Uncertainty Disclosures.
+
+3. newsroom/penfield_desk/app.py & HTML/Jinja2 Templates:
+   - FastAPI application serving the local editorial desk on 127.0.0.1:8000.
+   - 3-Pane CSS Grid UI (100vh split, zero global scroll, tactical slate palette matching tokens.css):
+     - Left Pane (32%): SPEC-1 Lead Queue, Anomaly Score Decomposition Receipt ("Why this was flagged"), and Primary Source Document Viewer.
+     - Center Pane (40%): Structured Draft Editor with live paragraph citation status indicators.
+     - Right Pane (28%): dors_venabili real-time gate list and the 4-checkbox Human Sign-Off Panel.
+   - High-Speed Verification: Clicking any [S-XXXX] tag in the draft editor scrolls the Left Pane and highlights the exact matching verbatim sentence in yellow (--pf-bg-highlight-match) in <50ms via lightweight JS/HTMX.
+   - Publication Barrier: The "Sign & Publish" button remains physically disabled (and rejects POST requests) until all 5 dors_venabili gates pass and all 4 human verification checkboxes are ticked.
+
+4. newsroom/harlan_eternity/signoff.py:
+   - sign_and_promote_article(slug: str, body_markdown: str, sorted_source_ids: list[str], editor_name: str, checks: dict[str, bool]) -> dict:
+   - Computes canonical SHA-256 proof hash, promotes analysis_tier from 'rule_based' to 'llm_verified', sets human_approved=True, status='published', and commits to radiant_ledger.
+
+5. tests/test_phase2_workstation.py:
+   - Pytest suite testing:
+     - All 5 dors_venabili verification functions (headline linter, loaded language linter, verbatim quote checker, PII scrubber, source diversity).
+     - Fake/hallucinated source IDs and non-verbatim quote injection are rejected.
+     - Sign-off function computes the exact canonical proof hash and updates the article.
+     - FastAPI endpoints for draft preview, HTMX validation, and sign-off blocking.

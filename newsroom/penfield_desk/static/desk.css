@@ -1,0 +1,163 @@
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  background: var(--pf-bg-base);
+  color: var(--pf-text);
+  font: 14px/1.45 var(--pf-font-ui);
+}
+
+.desk {
+  display: grid;
+  grid-template-columns: 32% 40% 28%;
+  height: 100vh;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-space-3);
+  min-height: 0;
+  min-width: 0;
+  padding: var(--pf-space-3);
+  background: var(--pf-bg-pane);
+  border-right: 1px solid var(--pf-border);
+}
+
+.pane:last-child { border-right: 0; }
+.pane-scroll { overflow-y: auto; }
+
+h1, h2 {
+  margin: 0;
+  color: var(--pf-text-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.queue { flex: 0 1 26%; min-height: 80px; overflow-y: auto; }
+.receipt { flex: 0 1 22%; min-height: 60px; overflow-y: auto; }
+.viewer { flex: 1 1 0; min-height: 0; overflow-y: auto; scroll-behavior: auto; }
+
+.lead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pf-space-2);
+  padding: var(--pf-space-1) var(--pf-space-2);
+  border-bottom: 1px solid var(--pf-border);
+}
+
+.lead.active { background: var(--pf-bg-raised); }
+.score { color: var(--pf-warn); font-family: var(--pf-font-mono); }
+.muted { color: var(--pf-text-muted); }
+
+.source { margin-bottom: var(--pf-space-4); }
+.source header { font-family: var(--pf-font-mono); font-size: 12px; }
+
+.source-text {
+  font-family: var(--pf-font-read);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.source-text .match {
+  background: var(--pf-bg-highlight-match);
+  color: var(--pf-fg-highlight-match);
+}
+
+form.editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--pf-space-2);
+  min-height: 0;
+}
+
+label { display: block; color: var(--pf-text-muted); font-size: 12px; }
+
+input[type="text"], textarea, select {
+  width: 100%;
+  padding: var(--pf-space-2);
+  border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius);
+  background: var(--pf-bg-input);
+  color: var(--pf-text);
+  font: inherit;
+}
+
+textarea {
+  flex: 1 1 40%;
+  min-height: 80px;
+  resize: none;
+  font-family: var(--pf-font-mono);
+  font-size: 13px;
+}
+
+.preview {
+  flex: 1 1 40%;
+  min-height: 0;
+  overflow-y: auto;
+  font-family: var(--pf-font-read);
+}
+
+.paragraph {
+  margin: 0 0 var(--pf-space-2);
+  padding-left: var(--pf-space-2);
+  border-left: 3px solid var(--pf-fail);
+}
+
+.paragraph.ok { border-left-color: var(--pf-pass); }
+.paragraph-issue { color: var(--pf-fail); font: 12px var(--pf-font-ui); }
+
+.tag {
+  padding: 0 var(--pf-space-1);
+  border: 1px solid var(--pf-accent);
+  border-radius: var(--pf-radius);
+  background: none;
+  color: var(--pf-accent);
+  cursor: pointer;
+  font: 12px var(--pf-font-mono);
+}
+
+.tag.unknown { border-color: var(--pf-fail); color: var(--pf-fail); cursor: not-allowed; }
+
+.roles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pf-space-2); }
+
+.gate { padding: var(--pf-space-1) 0; border-bottom: 1px solid var(--pf-border); }
+.gate-name::before { content: "\2715  "; color: var(--pf-fail); }
+.gate.ok .gate-name::before { content: "\2713  "; color: var(--pf-pass); }
+.gate ul { margin: var(--pf-space-1) 0 0; padding-left: var(--pf-space-4); color: var(--pf-fail); font-size: 12px; }
+
+.signoff label { padding: var(--pf-space-1) 0; color: var(--pf-text); font-size: 13px; }
+
+button.publish {
+  width: 100%;
+  padding: var(--pf-space-3);
+  border: 0;
+  border-radius: var(--pf-radius);
+  background: var(--pf-pass);
+  color: var(--pf-bg-base);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+button.publish:disabled {
+  background: var(--pf-bg-raised);
+  color: var(--pf-text-muted);
+  cursor: not-allowed;
+}
+
+button.secondary {
+  padding: var(--pf-space-1) var(--pf-space-2);
+  border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius);
+  background: var(--pf-bg-raised);
+  color: var(--pf-text);
+  cursor: pointer;
+}
+
+.refused { color: var(--pf-fail); }
+.proof { overflow-wrap: anywhere; font-family: var(--pf-font-mono); font-size: 12px; }
