@@ -19,6 +19,12 @@ the anomaly's sigma when there is one. INFERRED records never pass the
 evidence bar, because pdx-1i derived them by correlation and no filed record
 states them. A record whose sealed source has no readable text is skipped,
 never given an invented excerpt. Every packet is analysis_tier='rule_based'.
+
+A sealed page that cannot be about its record is skipped as a hollow source:
+a known search form or landing page (checked against the URL asked for and the
+URL the fetch ended at), or one page sealed for two different records in the
+same run when the page does not state either record's own pattern. Such a page holds text, so it would pass the verbatim check, but it
+does not state the record.
 """
 
 from __future__ import annotations
@@ -64,6 +70,21 @@ PRIORITY_SCORE: Final = {"MONITOR": 30.0, "STANDARD": 45.0, "ELEVATED": 60.0}
 POINTS_PER_SIGMA: Final = 20.0
 RECORD_TIERS: Final = frozenset({"HARD_RECORD", "REPORTED", "INFERRED"})
 EXCERPT_CHARS: Final = 300
+
+# Pages that list or search filings rather than state one. Seen on Kali
+# 2026-11-01: ORESTAR transaction links without a session land on the search
+# form; SEI and PDC links in pdx-1i point at landing pages.
+LANDING_PAGES: Final = frozenset(
+    {
+        ("www.oregon.gov", "/ogec/pages/sei-filings.aspx"),
+        ("www.pdc.wa.gov", "/browse/campaign-explorer"),
+        ("www.pdc.wa.gov", "/political-disclosure-reporting-data"),
+    }
+)
+# Text that only a search form carries, by host.
+SEARCH_FORM_MARKERS: Final = {
+    "secure.sos.state.or.us": "cneSearchForm",
+}
 
 # Hosts that publish filed public records. Anything else is secondary.
 PRIMARY_HOSTS: Final = (
@@ -122,6 +143,16 @@ def classify_source_tier(url: str) -> str:
         if host == primary or host.endswith("." + primary):
             return "tier_1_primary"
     return "tier_3_secondary"
+
+
+def is_landing_page(url: str) -> bool:
+    parsed = httpx.URL(url)
+    return ((parsed.host or "").lower(), parsed.path.lower().rstrip("/")) in LANDING_PAGES
+
+
+def is_search_form(url: str, text: str) -> bool:
+    marker = SEARCH_FORM_MARKERS.get(_host(url))
+    return marker is not None and marker in text
 
 
 def _optional_text(raw: dict[str, Any], name: str) -> str:
@@ -227,6 +258,27 @@ def build_prompt(record: Pdx1Record, artifact: SourceArtifact) -> str:
     )
 
 
+def _drop_shared_pages(result: Pdx1Import) -> None:
+    """Drop leads whose sealed page was sealed for another record too and does not
+    state the lead's own pattern. One filing that backs two records keeps both."""
+    counts = Counter(p.source_artifacts[0].sha256_hash for p in result.packets)
+    shared = {digest for digest, count in counts.items() if count > 1}
+    if not shared:
+        return
+    kept: list[Spec1LeadPacket] = []
+    for packet in result.packets:
+        artifact = packet.source_artifacts[0]
+        if artifact.sha256_hash in shared and not artifact.metadata["pattern_stated"]:
+            result.skipped["hollow_source"] += 1
+            result.errors.append(
+                f"{artifact.metadata['pdx1_record_id']}: {artifact.origin_url} "
+                "is the same page sealed for another record"
+            )
+        else:
+            kept.append(packet)
+    result.packets = kept
+
+
 def import_pdx1_signals(
     store_path: Path | str,
     allocate_source_id: Callable[[], str],
@@ -268,6 +320,10 @@ def import_pdx1_signals(
             if record.url is None:
                 result.skipped["no_url"] += 1
                 continue
+            if is_landing_page(record.url):
+                result.skipped["hollow_source"] += 1
+                result.errors.append(f"{record.record_id}: {record.url} is a landing page")
+                continue
             lead_id = lead_id_for(record)
             if lead_id in seen or is_known(lead_id):
                 result.skipped["known"] += 1
@@ -293,6 +349,13 @@ def import_pdx1_signals(
             if not text or not text.strip():
                 result.skipped["no_source_text"] += 1
                 continue
+            final_url = receipt["final_url"]
+            if is_landing_page(final_url) or is_search_form(final_url, text):
+                result.skipped["hollow_source"] += 1
+                result.errors.append(
+                    f"{record.record_id}: {final_url} is a search or landing page"
+                )
+                continue
 
             artifact = SourceArtifact(
                 source_id=receipt["source_id"],
@@ -309,6 +372,9 @@ def import_pdx1_signals(
                     "source_type": record.source_type,
                     "pdx1_tier": record.tier,
                     "entity_ids": record.entity_ids,
+                    "pattern_stated": bool(
+                        record.pattern and excerpt_is_verbatim(record.pattern, text)
+                    ),
                 },
             )
             excerpt = pick_excerpt(record, text)
@@ -326,6 +392,7 @@ def import_pdx1_signals(
                 )
             )
 
+    _drop_shared_pages(result)
     logger.info(
         "pdx-1i: %d leads, skipped %s, %d errors",
         len(result.packets),

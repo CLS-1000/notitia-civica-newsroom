@@ -323,3 +323,66 @@ def test_cli_pdx1_store_writes_then_dedupes(
     assert run()["pdx1_importer"] == {"written": 0, "rejected": 0}
     assert len(web.requests) == 1
     assert run("--pdx1-min-priority", "MONITOR")["pdx1_importer"] == {"written": 0, "rejected": 1}
+
+
+SEARCH_URL = "https://secure.sos.state.or.us/orestar/gotoPublicTransactionDetail.do?tranId=4417392"
+SEARCH_PAGE = '<html><body><form name="cneSearchForm"><p>Contributor/Payee Information</p></form></body></html>'
+SEI_LANDING = "https://www.oregon.gov/ogec/Pages/sei-filings.aspx"
+PDC_OLD = "https://www.pdc.wa.gov/browse/campaign-explorer"
+PDC_NEW = "https://www.pdc.wa.gov/political-disclosure-reporting-data"
+SHARED_A = "https://www.portland.gov/council/agenda?week=1"
+SHARED_B = "https://www.portland.gov/council/agenda?week=2"
+SHARED_PAGE = "<html><body><p>Council agendas are posted weekly.</p></body></html>"
+
+
+def test_hollow_sources_are_skipped(tmp_path: Path) -> None:
+    """The Kali run of 2026-11-01: search forms, landing pages, one page for many records."""
+    web = Web()
+    web.pages.update(
+        {
+            SEARCH_URL: (200, "text/html", SEARCH_PAGE.encode()),
+            SHARED_A: (200, "text/html", SHARED_PAGE.encode()),
+            SHARED_B: (200, "text/html", SHARED_PAGE.encode()),
+            PDC_NEW: (200, "text/html", b"<html><body><p>Data</p></body></html>"),
+        }
+    )
+    real_handler = web.handler
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == PDC_OLD.replace("browse/campaign-explorer", "browse/old"):
+            web.requests.append(str(request.url))
+            return httpx.Response(301, headers={"location": PDC_NEW})
+        return real_handler(request)
+
+    store = _write_store(
+        tmp_path / "s.jsonl",
+        [
+            _record(record_id="rec_search", url=SEARCH_URL),
+            _record(record_id="rec_sei", url=SEI_LANDING),
+            _record(
+                record_id="rec_redirect",
+                url=PDC_OLD.replace("browse/campaign-explorer", "browse/old"),
+            ),
+            _record(record_id="rec_shared_a", url=SHARED_A),
+            _record(record_id="rec_shared_b", url=SHARED_B),
+            _record(record_id="rec_ok"),
+        ],
+    )
+    result = import_pdx1_signals(
+        store, _allocator(), archive_dir=tmp_path / "a", transport=httpx.MockTransport(handler)
+    )
+
+    assert list(_by_record(result.packets)) == ["rec_ok"]
+    assert result.skipped == {"hollow_source": 5}
+    assert SEI_LANDING not in web.requests  # a known landing page is never fetched
+    for record_id in ("rec_search", "rec_sei", "rec_redirect", "rec_shared_a", "rec_shared_b"):
+        assert any(error.startswith(record_id) for error in result.errors)
+
+
+def test_landing_and_search_detection() -> None:
+    assert pdx1_importer.is_landing_page(SEI_LANDING)
+    assert pdx1_importer.is_landing_page(PDC_OLD + "/")
+    assert not pdx1_importer.is_landing_page(SEI_URL)
+    assert pdx1_importer.is_search_form(SEARCH_URL, SEARCH_PAGE)
+    assert not pdx1_importer.is_search_form(SEARCH_URL, ORESTAR_PAGE)
+    assert not pdx1_importer.is_search_form(PRESS_URL, SEARCH_PAGE)
