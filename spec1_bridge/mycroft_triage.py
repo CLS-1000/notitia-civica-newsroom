@@ -57,7 +57,7 @@ OLLAMA_URL: Final = "http://localhost:11434/api/generate"
 DEFAULT_OLLAMA_MODEL: Final = "llama3.2:triage"
 OLLAMA_TIMEOUT_SECONDS: Final = 120.0
 
-# Values match cls_pdx1.gates in SPEC-1: one hard record, or two reported sources.
+# Values match titan.gates in SPEC-1 (was cls_pdx1.gates): one hard record, or two reported sources.
 AUTHORITATIVE_TIERS: Final = frozenset({"tier_1_primary", "tier_2_institutional"})
 MIN_INDEPENDENT_SOURCES: Final = 2
 FRESHNESS_WINDOW_DAYS: Final = 180
@@ -366,6 +366,21 @@ def _known_lead(conn: Connection) -> Callable[[str], bool]:
     return is_known
 
 
+def run_pdx1(
+    store_path: str, min_priority: str, conn: Connection, enricher: OllamaEnricher
+) -> TriageReport:
+    """Import pdx-1i's signal store and triage its civic-record leads."""
+    imported = import_pdx1_signals(
+        store_path,
+        lambda: allocate_source_id(conn),
+        is_known=_known_lead(conn),
+        min_priority=min_priority,
+    )
+    for error in imported.errors:
+        logger.warning("pdx-1i: %s", error)
+    return triage_packets(imported.packets, "oregon_civic", conn, enricher)
+
+
 def run_proc_track(
     proc_track_path: str,
     session: str,
@@ -406,6 +421,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to pdx1_signals.jsonl; PDX-1i signals are skipped without one",
     )
     parser.add_argument(
+        "--pdx1-min-priority",
+        default=os.environ.get("PDX1_MIN_PRIORITY", "STANDARD"),
+        choices=("MONITOR", "STANDARD", "ELEVATED"),
+        help="Lowest pdx-1i priority band to import (default: STANDARD)",
+    )
+    parser.add_argument(
         "--proc-track-path",
         default=os.environ.get("PROC_TRACK_PATH"),
         help="Path to a CLS-1000/proc_track checkout; skipped without one",
@@ -443,11 +464,9 @@ def main(argv: list[str] | None = None) -> int:
             for adapter in adapters
         }
         if args.pdx1_store:
-            pdx_packets = import_pdx1_signals(args.pdx1_store)
-            if pdx_packets:
-                reports["pdx1_importer"] = triage_packets(
-                    pdx_packets, "oregon_civic", conn, enricher
-                )
+            reports["pdx1_importer"] = run_pdx1(
+                args.pdx1_store, args.pdx1_min_priority, conn, enricher
+            )
         if args.proc_track_path:
             try:
                 reports["proc_track_importer"] = run_proc_track(

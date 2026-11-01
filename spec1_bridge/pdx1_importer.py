@@ -1,8 +1,24 @@
 """Importer for CLS-1000/pdx-1i signals.
 
-Reads pdx1_signals.jsonl, extracts ORESTAR, SEI, and civic records,
-seals primary sources into radiant_ledger's source_registry, and emits
+Reads pdx-1i's ground-truth store (pdx1_signals.jsonl), one
+pdx1.models.IntelligenceRecord per line exactly as pdx-1i writes it with
+model_dump_json(), seals each record's source URL into custody, and emits
 Spec1LeadPacket objects for newsroom triage.
+
+The record fields this reads, from pdx-1i src/pdx1/models.py:
+
+    record_id, source_type, pattern, outcome, priority, tier, anomaly,
+    entity_ids, url, published_at
+
+priority is ELEVATED | STANDARD | MONITOR. tier is pdx-1i's own evidence
+grade, HARD_RECORD | REPORTED | INFERRED. anomaly is null unless the record
+is a sigma anomaly, and otherwise carries sigma, observed, baseline and tier.
+
+The score is a rule-based screen: a floor from the priority band, raised by
+the anomaly's sigma when there is one. INFERRED records never pass the
+evidence bar, because pdx-1i derived them by correlation and no filed record
+states them. A record whose sealed source has no readable text is skipped,
+never given an invented excerpt. Every packet is analysis_tier='rule_based'.
 """
 
 from __future__ import annotations
@@ -10,150 +26,310 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from collections import Counter
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import httpx
 
-from newsroom.harlan_eternity.custody import CustodyError, fetch_and_seal_source
+from newsroom.harlan_eternity.custody import (
+    DEFAULT_ARCHIVE_DIR,
+    CustodyError,
+    fetch_and_seal_source,
+)
+from spec1_bridge.adapters.base_lazlong import (
+    clamp_score,
+    excerpt_is_verbatim,
+    normalize_whitespace,
+    read_artifact_text,
+    render_prompt,
+)
 from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
 
 logger = logging.getLogger(__name__)
 
-PDX1_NAMESPACE = uuid.UUID("a3b89f21-7c42-4f1b-8e2a-9e123456789a")
+ADAPTER_NAME: Final = "pdx1_importer"
+SUBJECT_DOMAIN: Final = "oregon_civic"
+ARTIFACT_KIND: Final = "pdx1_record_source"
+PDX1_NAMESPACE: Final = uuid.UUID("a3b89f21-7c42-4f1b-8e2a-9e123456789a")
 
-PRIMARY_DOMAINS = (
+PRIORITY_RANK: Final = {"MONITOR": 0, "STANDARD": 1, "ELEVATED": 2}
+# Floors sit either side of mycroft's MIN_ANOMALY_SCORE (40): MONITOR alone does
+# not clear triage, STANDARD and ELEVATED do.
+PRIORITY_SCORE: Final = {"MONITOR": 30.0, "STANDARD": 45.0, "ELEVATED": 60.0}
+# 3 sigma, pdx-1i's publish-eligible TIER_1 band, maps to 60; 5 sigma caps at 100.
+POINTS_PER_SIGMA: Final = 20.0
+RECORD_TIERS: Final = frozenset({"HARD_RECORD", "REPORTED", "INFERRED"})
+EXCERPT_CHARS: Final = 300
+
+# Hosts that publish filed public records. Anything else is secondary.
+PRIMARY_HOSTS: Final = (
+    "secure.sos.state.or.us",  # ORESTAR
     "sos.oregon.gov",
-    "oregonlegislature.gov",
+    "oregonlegislature.gov",  # OLIS (olis., api.)
+    "apps.oregon.gov",  # SEI
+    "oregon.gov",
+    "data.wa.gov",  # WA PDC open data
+    "pdc.wa.gov",
     "portland.gov",
     "multco.us",
     "clackamas.us",
     "washingtoncountyor.gov",
-    "oregon.gov",
+    "oregonmetro.gov",
+    "clark.wa.gov",
 )
 
 
+class Pdx1RecordError(ValueError):
+    """A store line is not a usable pdx-1i IntelligenceRecord."""
+
+
+@dataclass(frozen=True, slots=True)
+class Pdx1Record:
+    record_id: str
+    source_type: str
+    pattern: str
+    outcome: str
+    priority: str
+    tier: str
+    sigma: float | None
+    anomaly: dict[str, Any] | None
+    entity_ids: list[str]
+    url: str | None
+    published_at: datetime
+
+
+@dataclass(slots=True)
+class Pdx1Import:
+    """Outcome of one import. skipped counts records by why they were left out."""
+
+    packets: list[Spec1LeadPacket] = field(default_factory=list)
+    skipped: Counter[str] = field(default_factory=Counter)
+    errors: list[str] = field(default_factory=list)
+
+
+def _host(url: str) -> str:
+    return (httpx.URL(url).host or "").lower()
+
+
 def classify_source_tier(url: str) -> str:
-    """Classify sourcing tier based on origin domain."""
-    clean_url = url.lower()
-    for domain in PRIMARY_DOMAINS:
-        if domain in clean_url:
+    """Tier of the source document, by the host that published it."""
+    host = _host(url)
+    for primary in PRIMARY_HOSTS:
+        if host == primary or host.endswith("." + primary):
             return "tier_1_primary"
     return "tier_3_secondary"
 
 
-def build_pdx1_prompt(record: dict[str, Any], excerpt: str) -> str:
-    """Format a paste-ready prompt preserving role-based seat designations."""
-    record_id = record.get("record_id", "UNKNOWN")
-    pattern = record.get("pattern", "Civic / Campaign Finance Activity")
-    priority = record.get("priority", "NORMAL")
-    anomaly = record.get("anomaly", {})
-    entity_ids = ", ".join(record.get("entity_ids", [])) or "None specified"
+def _optional_text(raw: dict[str, Any], name: str) -> str:
+    value = raw.get(name)
+    return value if isinstance(value, str) else ""
 
-    return (
-        f"INVESTIGATIVE LEAD: PDX-1i Signal [{record_id}]\n"
-        f"Pattern: {pattern} (Priority: {priority})\n"
-        f"Associated Entities/Seats: {entity_ids}\n"
-        f"Anomaly Details: {json.dumps(anomaly, default=str)}\n"
-        f"Primary Verbatim Excerpt:\n"
-        f'"{excerpt}"\n\n'
-        f"TASK: Draft a nonpartisan factual brief evaluating this civic transaction. "
-        f"Cite all assertions strictly using the provided primary source ID."
+
+def parse_record(line: str) -> Pdx1Record:
+    """Validate one JSONL line against the fields pdx-1i writes."""
+    try:
+        raw = json.loads(line)
+    except ValueError as error:
+        raise Pdx1RecordError(f"not JSON: {error}") from error
+    if not isinstance(raw, dict):
+        raise Pdx1RecordError("not a JSON object")
+
+    def text(name: str) -> str:
+        value = raw.get(name)
+        if not isinstance(value, str) or not value:
+            raise Pdx1RecordError(f"{name} missing or not a string")
+        return value
+
+    priority = text("priority")
+    if priority not in PRIORITY_RANK:
+        raise Pdx1RecordError(f"unknown priority {priority!r}")
+    tier = text("tier")
+    if tier not in RECORD_TIERS:
+        raise Pdx1RecordError(f"unknown tier {tier!r}")
+
+    anomaly = raw.get("anomaly")
+    sigma: float | None = None
+    if anomaly is not None:
+        if not isinstance(anomaly, dict) or not isinstance(anomaly.get("sigma"), int | float):
+            raise Pdx1RecordError("anomaly present without a numeric sigma")
+        sigma = float(anomaly["sigma"])
+
+    try:
+        published_at = datetime.fromisoformat(text("published_at"))
+    except ValueError as error:
+        raise Pdx1RecordError(f"bad published_at: {error}") from error
+    if published_at.tzinfo is None:
+        published_at = published_at.replace(tzinfo=UTC)
+
+    url = raw.get("url")
+    entity_ids = raw.get("entity_ids") or []
+    return Pdx1Record(
+        record_id=text("record_id"),
+        source_type=text("source_type"),
+        pattern=_optional_text(raw, "pattern"),
+        outcome=_optional_text(raw, "outcome"),
+        priority=priority,
+        tier=tier,
+        sigma=sigma,
+        anomaly=anomaly,
+        entity_ids=[str(item) for item in entity_ids] if isinstance(entity_ids, list) else [],
+        url=url if isinstance(url, str) and url else None,
+        published_at=published_at,
+    )
+
+
+def score_record(record: Pdx1Record) -> float:
+    """Priority floor, raised by the anomaly's sigma. A rule-based screen."""
+    score = PRIORITY_SCORE[record.priority]
+    if record.sigma is not None:
+        score = max(score, abs(record.sigma) * POINTS_PER_SIGMA)
+    return clamp_score(score)
+
+
+def lead_id_for(record: Pdx1Record) -> str:
+    return str(uuid.uuid5(PDX1_NAMESPACE, record.record_id))
+
+
+def pick_excerpt(record: Pdx1Record, text: str) -> str:
+    """The record's own pattern text if the source states it, else the source's opening.
+
+    Either way the excerpt is a span of the sealed source, so it passes the
+    corroboration gate's verbatim check honestly.
+    """
+    if record.pattern and excerpt_is_verbatim(record.pattern, text):
+        return record.pattern
+    return normalize_whitespace(text)[:EXCERPT_CHARS].strip()
+
+
+def build_prompt(record: Pdx1Record, artifact: SourceArtifact) -> str:
+    facts: dict[str, Any] = {
+        "pdx-1i record": record.record_id,
+        "Source type": record.source_type,
+        "Pattern (pdx-1i summary, not verbatim)": record.pattern or "(none)",
+        "pdx-1i outcome / priority": f"{record.outcome or '?'} / {record.priority}",
+        "pdx-1i evidence tier": record.tier,
+        "Seats / entities": ", ".join(record.entity_ids) or "none",
+        "Anomaly": json.dumps(record.anomaly, sort_keys=True) if record.anomaly else "none",
+        "Published": record.published_at.isoformat(),
+    }
+    return render_prompt(
+        f"CIVIC RECORD: pdx-1i {record.record_id}",
+        facts,
+        [artifact],
+        (
+            "Draft a nonpartisan, factual brief on this civic record from the sealed "
+            "source. Refer to officials by seat, as pdx-1i does."
+        ),
     )
 
 
 def import_pdx1_signals(
     store_path: Path | str,
-    priority_threshold: str = "NORMAL",
-) -> list[Spec1LeadPacket]:
-    """Parse pdx1_signals.jsonl and emit newsroom-compatible Spec1LeadPackets."""
+    allocate_source_id: Callable[[], str],
+    *,
+    is_known: Callable[[str], bool] = lambda _lead_id: False,
+    min_priority: str = "STANDARD",
+    archive_dir: Path = DEFAULT_ARCHIVE_DIR,
+    transport: httpx.BaseTransport | None = None,
+) -> Pdx1Import:
+    """Read pdx1_signals.jsonl and emit leads for records at or above min_priority.
+
+    Sources are fetched and sealed only for new leads at or above min_priority,
+    so a re-run over the same store fetches nothing.
+    """
+    if min_priority not in PRIORITY_RANK:
+        raise ValueError(f"min_priority must be one of {sorted(PRIORITY_RANK)}")
+    floor = PRIORITY_RANK[min_priority]
+    result = Pdx1Import()
     file_path = Path(store_path)
     if not file_path.exists():
         logger.warning("PDX-1i signals file not found: %s", file_path)
-        return []
+        result.errors.append(f"store not found: {file_path}")
+        return result
 
-    priority_ranks = {"LOW": 0, "NORMAL": 1, "HIGH": 2, "CRITICAL": 3}
-    min_rank = priority_ranks.get(priority_threshold.upper(), 1)
-
-    lead_packets: list[Spec1LeadPacket] = []
-
-    with file_path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
+    seen: set[str] = set()
+    with file_path.open("r", encoding="utf-8") as handle:
+        for number, line in enumerate(handle, start=1):
+            if not line.strip():
                 continue
-
             try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                logger.error("Skipping malformed JSON line in %s", file_path)
+                record = parse_record(line)
+            except Pdx1RecordError as error:
+                result.skipped["malformed"] += 1
+                result.errors.append(f"line {number}: {error}")
                 continue
-
-            record_priority = record.get("priority", "NORMAL").upper()
-            if priority_ranks.get(record_priority, 1) < min_rank:
+            if PRIORITY_RANK[record.priority] < floor:
+                result.skipped["below_priority"] += 1
                 continue
-
-            source_url = record.get("url")
-            if not source_url:
+            if record.url is None:
+                result.skipped["no_url"] += 1
                 continue
+            lead_id = lead_id_for(record)
+            if lead_id in seen or is_known(lead_id):
+                result.skipped["known"] += 1
+                continue
+            seen.add(lead_id)
 
-            engine_record_id = str(record.get("record_id", uuid.uuid4()))
-            lead_id = str(uuid.uuid5(PDX1_NAMESPACE, engine_record_id))
-
-            tier = classify_source_tier(source_url)
-
+            tier = classify_source_tier(record.url)
             try:
-                custody_receipt = fetch_and_seal_source(
-                    url=source_url,
-                    source_id=f"S-{engine_record_id[:8].upper()}",
-                    tier=tier,
+                receipt = fetch_and_seal_source(
+                    record.url,
+                    allocate_source_id(),
+                    tier,
+                    archive_dir=archive_dir,
+                    transport=transport,
                 )
-            except (httpx.HTTPError, CustodyError, ValueError, OSError) as e:
-                logger.error("Failed to seal source %s: %s", source_url, e)
+            except (httpx.HTTPError, CustodyError, ValueError, OSError) as error:
+                result.skipped["seal_failed"] += 1
+                result.errors.append(f"{record.record_id}: could not seal {record.url}: {error}")
                 continue
 
-            archive_path = Path(custody_receipt["archive_path"])
-            verbatim_text = ""
-            if archive_path.exists():
-                try:
-                    verbatim_text = archive_path.read_text(encoding="utf-8", errors="ignore")
-                except OSError:
-                    verbatim_text = ""
-
-            sample_excerpt = verbatim_text[:300].strip() if verbatim_text else "Primary docket record sealed."
-            source_id = custody_receipt["source_id"]
+            archive_path = Path(receipt["archive_path"])
+            text = read_artifact_text(archive_path.read_bytes(), receipt["content_type"])
+            if not text or not text.strip():
+                result.skipped["no_source_text"] += 1
+                continue
 
             artifact = SourceArtifact(
-                source_id=source_id,
+                source_id=receipt["source_id"],
                 tier=tier,
-                origin_url=source_url,
-                sha256_hash=custody_receipt["raw_sha256"],
+                origin_url=record.url,
+                sha256_hash=receipt["raw_sha256"],
                 raw_payload_path=str(archive_path),
-                captured_at=datetime.now(UTC),
+                captured_at=datetime.fromisoformat(receipt["retrieved_at"]),
                 metadata={
+                    "kind": ARTIFACT_KIND,
+                    "content_type": receipt["content_type"],
                     "engine": "pdx-1i",
-                    "source_type": record.get("source_type", "civic_filing"),
-                    "entity_ids": record.get("entity_ids", []),
+                    "pdx1_record_id": record.record_id,
+                    "source_type": record.source_type,
+                    "pdx1_tier": record.tier,
+                    "entity_ids": record.entity_ids,
                 },
             )
-
-            raw_score = float(record.get("anomaly", {}).get("score", 50.0))
-            normalized_score = (raw_score * 100.0) if raw_score <= 1.0 else min(raw_score, 100.0)
-
-            prompt = build_pdx1_prompt(record, sample_excerpt)
-
-            packet = Spec1LeadPacket(
-                lead_id=lead_id,
-                timestamp=datetime.now(UTC),
-                adapter_name="pdx1_importer",
-                anomaly_score=normalized_score,
-                evidence_bar_passed=(tier == "tier_1_primary"),
-                source_artifacts=[artifact],
-                verbatim_excerpts={source_id: sample_excerpt},
-                paste_ready_prompt=prompt,
-                analysis_tier="rule_based",
+            excerpt = pick_excerpt(record, text)
+            result.packets.append(
+                Spec1LeadPacket(
+                    lead_id=lead_id,
+                    timestamp=record.published_at,
+                    adapter_name=ADAPTER_NAME,
+                    anomaly_score=score_record(record),
+                    evidence_bar_passed=record.tier != "INFERRED" and bool(excerpt),
+                    source_artifacts=[artifact],
+                    verbatim_excerpts={artifact.source_id: excerpt},
+                    paste_ready_prompt=build_prompt(record, artifact),
+                    analysis_tier="rule_based",
+                )
             )
-            lead_packets.append(packet)
 
-    return lead_packets
+    logger.info(
+        "pdx-1i: %d leads, skipped %s, %d errors",
+        len(result.packets),
+        dict(result.skipped),
+        len(result.errors),
+    )
+    return result
