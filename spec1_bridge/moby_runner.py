@@ -197,7 +197,7 @@ def _resolve_blob(entry: SourceEntry, base_dir: Path) -> Path:
     return blob
 
 
-def _parse_line(line: str) -> SourceEntry:
+def parse_manifest_line(line: str) -> SourceEntry:
     try:
         payload = json.loads(line)
     except ValueError as error:
@@ -291,7 +291,7 @@ def run_manifest(
             if not line.strip():
                 continue
             try:
-                entry = _parse_line(line)
+                entry = parse_manifest_line(line)
                 blob = _resolve_blob(entry, root)
                 # One read, so the text comes from exactly the bytes that were hashed.
                 raw = blob.read_bytes()

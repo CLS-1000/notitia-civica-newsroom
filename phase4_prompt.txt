@@ -1,0 +1,42 @@
+Build all deliverables for Phase 4 of Notitia Civica. Write production-ready, typed Python 3.12 code conforming strictly to PEP 8, ruff, and mypy. Use mocked API payloads and synthetic test feeds so the entire test suite runs offline without live network dependencies or API keys. When finished, run 'uv run pytest tests/test_phase4_detectors.py' and verify all tests pass.
+
+DATA & ETHICAL CONSTRAINTS:
+- "Legible Over Clever": Every detector must emit a Plain-English Decomposition Receipt explaining why a signal tripped.
+- "Truth Is Earned": Unverified human narratives, rumors, and UAP sighting clusters are stored in the quarantined schema `sociology_telemetry.narrative_observations` and never cited as objective physical proof.
+- Respect the Editorial Constitution: Report on what people experience and say with dignity; separate honest witnesses from hucksters.
+
+SPECIFICATION:
+1. spec1_bridge/adapters/deckard_ct_mapper.py (Detector 1 — Dual-Use CT & Pink-Slime Mapper):
+   - Ingests moby-dork harvest_manifest.jsonl output.
+   - Detects newly issued subdomains across infrastructure domains.
+   - For newly discovered media-styled domains, scrapes /ads.txt for shared Google AdSense pub- IDs and hashes /favicon.ico (mmh3) to expose coordinated pink-slime local news networks.
+
+2. spec1_bridge/adapters/void_crossjoin.py (Detector 2 — Disaster-to-Rumor Information Void Cross-Join):
+   - Ingests USGS Earthquakes (M >= 4.0), NASA FIRMS thermal anomalies, and Cloudflare Radar ASN outages.
+   - When a physical shock trips, triggers a 6-hour listener pattern for regional placenames against Bluesky Jetstream and Wikimedia EventStreams to catch emerging rumors during the official information void.
+
+3. spec1_bridge/adapters/valis_uap.py (Engine 7 — UAP & Aerospace Anomaly Listener):
+   - Ingests NUFORC sighting records.
+   - Uses skyfield to compute azimuth and elevation against CelesTrak GP/SupGP satellite passes and pyswisseph planetary ephemerides from the witness's timestamp and coordinates.
+   - Automatically tags matches as IDENTIFIED_ORBITAL_PASS, isolating the uncataloged residual alongside active FAA NOTAM dockets.
+
+4. spec1_bridge/adapters/eschaton_prophecy.py (Engine 10 — Religion, Prophecy & Calendar Math):
+   - Uses pyswisseph to compute upcoming solar/lunar eclipses, planetary retrograde stations, and biblical/apocalyptic anniversaries.
+   - Generates a rolling 90-day "High-Susceptibility Prophecy Calendar" to forecast viral apocalyptic panic waves.
+
+5. spec1_bridge/adapters/hawkes_narrative_engine.py (Detector 5 — Hawkes Process Narrative Velocity):
+   - Ingests text streams from Bluesky Jetstream and GDELT 2.0.
+   - Computes 5-gram character MinHash signatures for near-duplicate text clustering.
+   - Implements a Hawkes self-exciting point process model: lambda(t) = mu(t) + sum alpha * exp(-beta * (t - t_i)).
+   - Separates exogenous bot seeding (mu) from endogenous human organic virality (R_t = alpha / beta).
+   - Writes structured observations to sociology_telemetry.narrative_observations only when R_t > 1.2 or mu > 0.8.
+
+6. tests/test_phase4_detectors.py:
+   - Comprehensive offline pytest suite testing:
+     - Pink-slime shared AdSense ID and favicon hash detection.
+     - Disaster void trigger activation on USGS M >= 4.0 quakes.
+     - Satellite pass subtraction using synthetic TLEs in skyfield.
+     - Astronomical eclipse/retrograde calculation via pyswisseph.
+     - Hawkes process parameter estimation on synthetic timestamp arrivals.
+
+Run pytest across all phases to ensure full backwards compatibility.
