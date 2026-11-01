@@ -959,7 +959,9 @@ def test_signal_is_quarantined_in_domain_6(db: Conn) -> None:
 
     domain, _, text, metrics = quarantined(db)[0]
     assert (domain, text) == (DOMAIN_FAKE_NEWS, "The same claim")
+    assert signal.fit is not None
     assert metrics["receipt"]["metrics"]["r_t"] == pytest.approx(signal.fit.r_t)
+    assert "status" not in metrics["receipt"]
     assert "does not show who posted it" in metrics["receipt"]["caveat"]
     assert_no_evidence_written(db)
 
@@ -967,7 +969,8 @@ def test_signal_is_quarantined_in_domain_6(db: Conn) -> None:
 def test_quiet_signal_is_not_written(db: Conn) -> None:
     posts = make_posts([hour * 10.0 for hour in range(30)])
     signal = hawkes.analyze_cluster(posts)
-    assert signal is not None and not hawkes.should_record(signal.fit)
+    assert signal is not None and signal.fit is not None
+    assert not hawkes.should_record(signal.fit)
     assert hawkes.write_signal(db, signal) is None
     assert quarantined(db) == []
 
@@ -981,6 +984,53 @@ def test_receipt_never_calls_anyone_a_bot_or_human() -> None:
 
 def test_small_clusters_are_not_fitted() -> None:
     assert hawkes.analyze_cluster(make_posts([0.0, 1.0])) is None
+
+
+@pytest.mark.parametrize(
+    ("events", "span_hours", "preliminary"),
+    [
+        (29, 10.0, True),  # one post short
+        (30, 1.99, True),  # just under the span
+        (5000, 1.0, True),  # size does not buy back a short window
+        (30, 2.0, False),  # exactly on both gates
+    ],
+)
+def test_gate_on_events_and_span(
+    events: int, span_hours: float, preliminary: bool
+) -> None:
+    step = span_hours / (events - 1)
+    signal = hawkes.analyze_cluster(make_posts([i * step for i in range(events)]))
+    assert signal is not None
+    assert (signal.fit is None) is preliminary
+    status = signal.receipt.status
+    assert status == (hawkes.PRELIMINARY_STATUS if preliminary else None)
+
+
+def test_preliminary_receipt_reports_no_rates_and_is_not_written(db: Conn) -> None:
+    signal = hawkes.analyze_cluster(make_posts([i * 0.01 for i in range(100)]))
+    assert signal is not None and signal.fit is None
+
+    receipt = signal.receipt.as_dict()
+    assert receipt["status"] == "PRELIMINARY_BURST_OBSERVATION"
+    assert receipt["reasons"] == [
+        (
+            "Awaiting wider temporal window to reliably separate background seeding "
+            "from viral excitation."
+        )
+    ]
+    assert not {"mu", "alpha", "beta", "r_t"} & set(receipt["metrics"])
+    assert signal.receipt.plain_english().startswith(
+        "Status: PRELIMINARY_BURST_OBSERVATION"
+    )
+    assert hawkes.write_signal(db, signal) is None
+    assert quarantined(db) == []
+
+
+def test_beta_stays_above_its_floor() -> None:
+    # Without the floor, this burst fits with beta effectively zero.
+    times = simulate(mu=0.5, alpha=4.5, beta=3.0, horizon=4.0, seed=1)
+    fit = hawkes.fit_hawkes(times, horizon=4.0)
+    assert fit.beta == pytest.approx(hawkes.BETA_BOUNDS[0])
 
 
 def test_parses_a_gdelt_row() -> None:

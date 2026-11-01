@@ -49,6 +49,16 @@ MIN_EVENTS: Final = 20
 R_THRESHOLD: Final = 1.2
 MU_THRESHOLD: Final = 0.8  # posts per hour
 
+# Below either gate, mu and self-excitation cannot be told apart, so none is reported.
+RELIABLE_MIN_EVENTS: Final = 30
+RELIABLE_MIN_HOURS: Final = 2.0
+PRELIMINARY_STATUS: Final = "PRELIMINARY_BURST_OBSERVATION"
+PRELIMINARY_MESSAGE: Final = (
+    "Awaiting wider temporal window to reliably separate background seeding from "
+    "viral excitation."
+)
+
+BETA_BOUNDS: Final = (0.1, 50.0)  # per hour; the floor stops beta collapsing to zero
 _BETA_STARTS: Final = (0.5, 2.0, 10.0)
 _SECONDS_PER_HOUR: Final = 3600.0
 _GKG_COLUMNS: Final = 27
@@ -173,13 +183,14 @@ def fit_hawkes(times: Sequence[float], horizon: float | None = None) -> HawkesFi
 
     rate = len(shifted) / span
     best = None
+    log_beta_bounds = (math.log(BETA_BOUNDS[0]), math.log(BETA_BOUNDS[1]))
     for beta in _BETA_STARTS:
         start = np.log([rate / 2, beta / 2, beta])
         outcome = minimize(
             negative,
             start,
             method="L-BFGS-B",
-            bounds=[(-12.0, 9.0), (-12.0, 9.0), (-7.0, 9.0)],
+            bounds=[(-12.0, 9.0), (-12.0, 9.0), log_beta_bounds],
         )
         if best is None or outcome.fun < best.fun:
             best = outcome
@@ -198,7 +209,7 @@ class NarrativeSignal:
     label: str
     representative: str
     first_seen: datetime
-    fit: HawkesFit
+    fit: HawkesFit | None  # None until the window can support a fit
     receipt: DecompositionReceipt
 
 
@@ -213,14 +224,41 @@ def analyze_cluster(posts: Sequence[StreamPost]) -> NarrativeSignal | None:
     ]
     if hours[-1] <= 0:
         return None
+    platforms = sorted({post.platform for post in ordered})
+    label = f"narrative:{mmh3.hash(_normalized(first.text), signed=False):08x}"
+    finding = (
+        f"{len(ordered)} near-duplicate posts over {hours[-1]:.1f} hours "
+        f"on {', '.join(platforms)}."
+    )
+    if len(ordered) < RELIABLE_MIN_EVENTS or hours[-1] < RELIABLE_MIN_HOURS:
+        return NarrativeSignal(
+            label,
+            first.text,
+            first.at,
+            None,
+            DecompositionReceipt(
+                detector=DETECTOR,
+                finding=finding,
+                reasons=(PRELIMINARY_MESSAGE,),
+                caveat=(
+                    f"No rates are reported below {RELIABLE_MIN_EVENTS} posts or "
+                    f"{RELIABLE_MIN_HOURS} hours. This does not show who posted the "
+                    "text or whether it is true."
+                ),
+                metrics={
+                    "events": len(ordered),
+                    "span_hours": hours[-1],
+                    "platforms": platforms,
+                },
+                status=PRELIMINARY_STATUS,
+            ),
+        )
     fit = fit_hawkes(hours)
     tripped = []
     if fit.r_t > R_THRESHOLD:
         tripped.append(f"R_t of {fit.r_t:.2f} is above {R_THRESHOLD}.")
     if fit.mu > MU_THRESHOLD:
         tripped.append(f"mu of {fit.mu:.2f} posts an hour is above {MU_THRESHOLD}.")
-    platforms = sorted({post.platform for post in ordered})
-    label = f"narrative:{mmh3.hash(_normalized(first.text), signed=False):08x}"
     return NarrativeSignal(
         label,
         first.text,
@@ -228,8 +266,7 @@ def analyze_cluster(posts: Sequence[StreamPost]) -> NarrativeSignal | None:
         fit,
         DecompositionReceipt(
             detector=DETECTOR,
-            finding=f"{len(ordered)} near-duplicate posts over {hours[-1]:.1f} hours "
-            f"on {', '.join(platforms)}.",
+            finding=finding,
             reasons=(
                 (
                     f"About {fit.mu:.2f} posts an hour arrived without being explained "
@@ -261,7 +298,7 @@ def analyze_cluster(posts: Sequence[StreamPost]) -> NarrativeSignal | None:
 
 def write_signal(conn: Connection[Any], signal: NarrativeSignal) -> str | None:
     """Quarantine a signal that clears a threshold. Others are not written."""
-    if not should_record(signal.fit):
+    if signal.fit is None or not should_record(signal.fit):
         return None
     return write_observation(
         conn,

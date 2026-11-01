@@ -43,22 +43,26 @@ class DecompositionReceipt:
     reasons: tuple[str, ...]
     caveat: str
     metrics: dict[str, Any] = field(default_factory=dict)
+    status: str | None = None
 
     def __post_init__(self) -> None:
         if not self.finding.strip() or not self.reasons or not self.caveat.strip():
             raise ValueError("a receipt needs a finding, reasons, and a caveat")
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        receipt = {
             "detector": self.detector,
             "finding": self.finding,
             "reasons": list(self.reasons),
             "caveat": self.caveat,
             "metrics": self.metrics,
         }
+        return receipt if self.status is None else {**receipt, "status": self.status}
 
     def plain_english(self) -> str:
         lines = [self.finding, *(f"- {reason}" for reason in self.reasons)]
+        if self.status is not None:
+            lines.insert(0, f"Status: {self.status}")
         lines.append(f"Limits: {self.caveat}")
         return "\n".join(lines)
 
