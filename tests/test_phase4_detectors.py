@@ -904,18 +904,22 @@ def test_too_few_events_cannot_be_fitted() -> None:
 
 
 @pytest.mark.parametrize(
-    ("mu", "alpha", "beta", "expected"),
+    ("mu", "alpha", "beta", "span_hours", "expected"),
     [
-        (0.8, 1.2, 1.0, False),  # both exactly on the threshold
-        (0.81, 0.1, 1.0, True),
-        (0.1, 1.3, 1.0, True),
-        (0.1, 0.5, 1.0, False),
+        (0.8, 1.2, 1.0, 24.0, False),  # both exactly on the threshold
+        (0.81, 0.1, 1.0, 24.0, True),  # mu counts from exactly 24 hours
+        (0.81, 0.1, 1.0, 23.99, False),  # mu alone cannot trip a shorter window
+        (50.0, 0.1, 1.0, 2.0, False),  # however high it reads
+        (0.1, 1.3, 1.0, 2.0, True),  # R_t trips any window
+        (0.1, 1.3, 1.0, 24.0, True),
+        (0.1, 0.5, 1.0, 24.0, False),
     ],
 )
 def test_record_thresholds_are_strict(
-    mu: float, alpha: float, beta: float, expected: bool
+    mu: float, alpha: float, beta: float, span_hours: float, expected: bool
 ) -> None:
-    assert hawkes.should_record(hawkes.HawkesFit(mu, alpha, beta, 30, 0.0)) is expected
+    fit = hawkes.HawkesFit(mu, alpha, beta, 30, 0.0, span_hours)
+    assert hawkes.should_record(fit) is expected
 
 
 def test_near_duplicates_cluster_and_others_do_not() -> None:
@@ -1004,6 +1008,29 @@ def test_gate_on_events_and_span(
     assert (signal.fit is None) is preliminary
     status = signal.receipt.status
     assert status == (hawkes.PRELIMINARY_STATUS if preliminary else None)
+
+
+def test_short_window_mu_alone_is_not_written_and_says_why(db: Conn) -> None:
+    # Evenly spaced posts have no self-excitation, only a high steady rate.
+    signal = hawkes.analyze_cluster(make_posts([i * 0.1 for i in range(100)]))
+    assert signal is not None and signal.fit is not None
+    assert signal.fit.mu > hawkes.MU_THRESHOLD
+    assert signal.fit.r_t <= hawkes.R_THRESHOLD
+
+    assert any("does not count" in reason for reason in signal.receipt.reasons)
+    assert hawkes.write_signal(db, signal) is None
+    assert quarantined(db) == []
+
+
+def test_long_window_mu_alone_is_written(db: Conn) -> None:
+    signal = hawkes.analyze_cluster(make_posts([i * 0.5 for i in range(100)]))
+    assert signal is not None and signal.fit is not None
+    assert signal.fit.mu > hawkes.MU_THRESHOLD
+    assert signal.fit.r_t <= hawkes.R_THRESHOLD
+
+    assert not any("does not count" in reason for reason in signal.receipt.reasons)
+    assert hawkes.write_signal(db, signal) is not None
+    assert len(quarantined(db)) == 1
 
 
 def test_preliminary_receipt_reports_no_rates_and_is_not_written(db: Conn) -> None:

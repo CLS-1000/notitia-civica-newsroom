@@ -48,6 +48,7 @@ MIN_SIMILARITY: Final = 0.6
 MIN_EVENTS: Final = 20
 R_THRESHOLD: Final = 1.2
 MU_THRESHOLD: Final = 0.8  # posts per hour
+MU_TRIGGER_MIN_HOURS: Final = 24.0  # shorter windows overstate mu, so it cannot trip
 
 # Below either gate, mu and self-excitation cannot be told apart, so none is reported.
 RELIABLE_MIN_EVENTS: Final = 30
@@ -140,6 +141,7 @@ class HawkesFit:
     beta: float
     events: int
     log_likelihood: float
+    span_hours: float
 
     @property
     def r_t(self) -> float:
@@ -196,12 +198,18 @@ def fit_hawkes(times: Sequence[float], horizon: float | None = None) -> HawkesFi
             best = outcome
     assert best is not None
     mu, alpha, beta = (float(value) for value in np.exp(best.x))
-    return HawkesFit(mu, alpha, beta, len(shifted), -float(best.fun))
+    return HawkesFit(mu, alpha, beta, len(shifted), -float(best.fun), span)
 
 
 def should_record(fit: HawkesFit) -> bool:
-    """Apply the quarantine thresholds: R_t > 1.2 or mu > 0.8 posts per hour."""
-    return fit.r_t > R_THRESHOLD or fit.mu > MU_THRESHOLD
+    """Apply the quarantine thresholds: R_t > 1.2, or mu > 0.8 posts per hour.
+
+    mu counts only on windows of 24 hours or more. On shorter ones it reads far above
+    its true value, so a burst of pure self-spread would trip it.
+    """
+    if fit.r_t > R_THRESHOLD:
+        return True
+    return fit.mu > MU_THRESHOLD and fit.span_hours >= MU_TRIGGER_MIN_HOURS
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,7 +266,14 @@ def analyze_cluster(posts: Sequence[StreamPost]) -> NarrativeSignal | None:
     if fit.r_t > R_THRESHOLD:
         tripped.append(f"R_t of {fit.r_t:.2f} is above {R_THRESHOLD}.")
     if fit.mu > MU_THRESHOLD:
-        tripped.append(f"mu of {fit.mu:.2f} posts an hour is above {MU_THRESHOLD}.")
+        if fit.span_hours >= MU_TRIGGER_MIN_HOURS:
+            tripped.append(f"mu of {fit.mu:.2f} posts an hour is above {MU_THRESHOLD}.")
+        else:
+            tripped.append(
+                f"mu of {fit.mu:.2f} posts an hour is above {MU_THRESHOLD}, but that "
+                f"does not count on a window under {MU_TRIGGER_MIN_HOURS:.0f} hours, "
+                "where this estimate runs high."
+            )
     return NarrativeSignal(
         label,
         first.text,
@@ -290,6 +305,7 @@ def analyze_cluster(posts: Sequence[StreamPost]) -> NarrativeSignal | None:
                 "beta": fit.beta,
                 "r_t": fit.r_t,
                 "events": fit.events,
+                "span_hours": fit.span_hours,
                 "platforms": platforms,
             },
         ),
