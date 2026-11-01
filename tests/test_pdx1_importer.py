@@ -410,3 +410,37 @@ def test_only_live_and_cache_records_are_imported(tmp_path: Path) -> None:
     assert result.skipped == {"not_live": 3}
     assert sorted(web.requests) == sorted([ORESTAR_URL, SEI_URL])
     assert _by_record(result.packets)["rec_cache"].source_artifacts[0].metadata["pdx1_origin"] == "cache"
+
+
+PDC_REPORT = "https://my.pdc.wa.gov/public/registrations/campaign-finance-report/110401493"
+PDC_ROW = "https://data.wa.gov/resource/kv7h-kjye.json?id=21807083&$select=id,amount"
+PDC_ROW_BODY = b'[{"id":"21807083","amount":"96.62"}]'
+PDC_MISSING = "https://data.wa.gov/resource/kv7h-kjye.json?id=1&$select=id,amount"
+
+
+def test_evidence_url_is_sealed_and_url_is_kept(tmp_path: Path) -> None:
+    web = Web()
+    web.pages.update(
+        {
+            PDC_ROW: (200, "application/json", PDC_ROW_BODY),
+            PDC_MISSING: (200, "application/json", b"[]"),
+        }
+    )
+    store = _write_store(
+        tmp_path / "s.jsonl",
+        [
+            _record(record_id="rec_pdc", source_type="WA_PDC", url=PDC_REPORT, evidence_url=PDC_ROW, pattern="x"),
+            _record(record_id="rec_gone", source_type="WA_PDC", url=PDC_REPORT, evidence_url=PDC_MISSING, pattern="x"),
+        ],
+    )
+    result = import_pdx1_signals(store, _allocator(), archive_dir=tmp_path / "a", transport=web.transport)
+
+    leads = _by_record(result.packets)
+    assert set(leads) == {"rec_pdc"}
+    artifact = leads["rec_pdc"].source_artifacts[0]
+    assert artifact.origin_url == PDC_ROW
+    assert artifact.tier == "tier_1_primary"
+    assert artifact.metadata["pdx1_url"] == PDC_REPORT
+    assert PDC_REPORT not in web.requests
+    assert result.skipped == {"hollow_source": 1}
+    assert any(e.startswith("rec_gone") for e in result.errors)

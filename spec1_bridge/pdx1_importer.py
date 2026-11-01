@@ -15,6 +15,10 @@ fetch) or fixture (an invented test payload). Only live and cache are public
 records. A record with any other origin, or none (written before pdx-1i stamped
 it), is skipped as not_live before anything is fetched.
 
+evidence_url, when pdx-1i sets one, is a machine-readable URL that returns
+exactly this record (WA PDC: the receipt's data.wa.gov row). It is what gets
+sealed; url, the human link pdx-1i's brief cites, is kept in the metadata.
+
 priority is ELEVATED | STANDARD | MONITOR. tier is pdx-1i's own evidence
 grade, HARD_RECORD | REPORTED | INFERRED. anomaly is null unless the record
 is a sigma anomaly, and otherwise carries sigma, observed, baseline and tier.
@@ -128,6 +132,12 @@ class Pdx1Record:
     url: str | None
     published_at: datetime
     origin: str | None = None
+    evidence_url: str | None = None
+
+    @property
+    def source_url(self) -> str | None:
+        """The URL to seal: the record-level evidence URL when there is one."""
+        return self.evidence_url or self.url
 
 
 @dataclass(slots=True)
@@ -155,6 +165,11 @@ def classify_source_tier(url: str) -> str:
 def is_landing_page(url: str) -> bool:
     parsed = httpx.URL(url)
     return ((parsed.host or "").lower(), parsed.path.lower().rstrip("/")) in LANDING_PAGES
+
+
+def is_empty_answer(text: str) -> bool:
+    """A query that matched nothing: Socrata answers `[]` for an unknown id."""
+    return text.strip() in {"[]", "{}", "null"}
 
 
 def is_search_form(url: str, text: str) -> bool:
@@ -218,6 +233,7 @@ def parse_record(line: str) -> Pdx1Record:
         url=url if isinstance(url, str) and url else None,
         published_at=published_at,
         origin=raw.get("origin") if isinstance(raw.get("origin"), str) else None,
+        evidence_url=_optional_text(raw, "evidence_url") or None,
     )
 
 
@@ -328,12 +344,13 @@ def import_pdx1_signals(
             if PRIORITY_RANK[record.priority] < floor:
                 result.skipped["below_priority"] += 1
                 continue
-            if record.url is None:
+            source_url = record.source_url
+            if source_url is None:
                 result.skipped["no_url"] += 1
                 continue
-            if is_landing_page(record.url):
+            if is_landing_page(source_url):
                 result.skipped["hollow_source"] += 1
-                result.errors.append(f"{record.record_id}: {record.url} is a landing page")
+                result.errors.append(f"{record.record_id}: {source_url} is a landing page")
                 continue
             lead_id = lead_id_for(record)
             if lead_id in seen or is_known(lead_id):
@@ -341,10 +358,10 @@ def import_pdx1_signals(
                 continue
             seen.add(lead_id)
 
-            tier = classify_source_tier(record.url)
+            tier = classify_source_tier(source_url)
             try:
                 receipt = fetch_and_seal_source(
-                    record.url,
+                    source_url,
                     allocate_source_id(),
                     tier,
                     archive_dir=archive_dir,
@@ -352,7 +369,7 @@ def import_pdx1_signals(
                 )
             except (httpx.HTTPError, CustodyError, ValueError, OSError) as error:
                 result.skipped["seal_failed"] += 1
-                result.errors.append(f"{record.record_id}: could not seal {record.url}: {error}")
+                result.errors.append(f"{record.record_id}: could not seal {source_url}: {error}")
                 continue
 
             archive_path = Path(receipt["archive_path"])
@@ -361,7 +378,11 @@ def import_pdx1_signals(
                 result.skipped["no_source_text"] += 1
                 continue
             final_url = receipt["final_url"]
-            if is_landing_page(final_url) or is_search_form(final_url, text):
+            if (
+                is_landing_page(final_url)
+                or is_search_form(final_url, text)
+                or is_empty_answer(text)
+            ):
                 result.skipped["hollow_source"] += 1
                 result.errors.append(
                     f"{record.record_id}: {final_url} is a search or landing page"
@@ -371,7 +392,7 @@ def import_pdx1_signals(
             artifact = SourceArtifact(
                 source_id=receipt["source_id"],
                 tier=tier,
-                origin_url=record.url,
+                origin_url=source_url,
                 sha256_hash=receipt["raw_sha256"],
                 raw_payload_path=str(archive_path),
                 captured_at=datetime.fromisoformat(receipt["retrieved_at"]),
@@ -383,6 +404,7 @@ def import_pdx1_signals(
                     "source_type": record.source_type,
                     "pdx1_tier": record.tier,
                     "pdx1_origin": record.origin,
+                    "pdx1_url": record.url,
                     "entity_ids": record.entity_ids,
                     "pattern_stated": bool(
                         record.pattern and excerpt_is_verbatim(record.pattern, text)
