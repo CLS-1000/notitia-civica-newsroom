@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-import uuid
 
-from newsroom.harlan_eternity.custody import fetch_and_seal_source
+import httpx
+
+from newsroom.harlan_eternity.custody import CustodyError, fetch_and_seal_source
 from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
 
 logger = logging.getLogger(__name__)
@@ -107,7 +109,7 @@ def import_pdx1_signals(
                     source_id=f"S-{engine_record_id[:8].upper()}",
                     tier=tier,
                 )
-            except Exception as e:
+            except (httpx.HTTPError, CustodyError, ValueError, OSError) as e:
                 logger.error("Failed to seal source %s: %s", source_url, e)
                 continue
 
@@ -116,7 +118,7 @@ def import_pdx1_signals(
             if archive_path.exists():
                 try:
                     verbatim_text = archive_path.read_text(encoding="utf-8", errors="ignore")
-                except Exception:
+                except OSError:
                     verbatim_text = ""
 
             sample_excerpt = verbatim_text[:300].strip() if verbatim_text else "Primary docket record sealed."

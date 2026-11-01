@@ -10,6 +10,8 @@ unreachable model only leaves the record without enrichment.
 
 Usage:
     python -m spec1_bridge.mycroft_triage --session-key 2026R1
+    python -m spec1_bridge.mycroft_triage --proc-track-path ~/proc_track_main \\
+        --proc-track-session 2025R1
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ import logging
 import os
 import sys
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -32,7 +34,6 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from newsroom.harlan_eternity.custody import extract_domain
-from spec1_bridge.pdx1_importer import import_pdx1_signals
 from spec1_bridge.adapters.base_lazlong import (
     LazLongAdapter,
     excerpt_is_verbatim,
@@ -43,6 +44,11 @@ from spec1_bridge.adapters.seldon_civic import SeldonCivicAdapter
 from spec1_bridge.adapters.ubik_oregon import UbikOregonAdapter
 from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
 from spec1_bridge.moby_runner import INSERT_SOURCE, Connection, allocate_source_id
+from spec1_bridge.pdx1_importer import import_pdx1_signals
+from spec1_bridge.proc_track_importer import (
+    ProcTrackError,
+    import_proc_track,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -350,6 +356,34 @@ def run_adapter(
     return triage_packets(harvest.packets, adapter.subject_domain, conn, enricher)
 
 
+def _known_lead(conn: Connection) -> Callable[[str], bool]:
+    def is_known(lead_id: str) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM triage_records WHERE record_id = %s", (uuid.UUID(lead_id),)
+        ).fetchone()
+        return row is not None
+
+    return is_known
+
+
+def run_proc_track(
+    proc_track_path: str,
+    session: str,
+    conn: Connection,
+    enricher: OllamaEnricher,
+) -> TriageReport:
+    """Replay a proc_track session and triage its procedural-outcome leads."""
+    imported = import_proc_track(
+        proc_track_path,
+        session,
+        lambda: allocate_source_id(conn),
+        is_known=_known_lead(conn),
+    )
+    for measure, halt in imported.halts.items():
+        logger.info("proc_track: %s did not replay: %s", measure, halt)
+    return triage_packets(imported.packets, "oregon_civic", conn, enricher)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -371,14 +405,36 @@ def main(argv: list[str] | None = None) -> int:
         default=os.environ.get("PDX1_STORE_PATH"),
         help="Path to pdx1_signals.jsonl; PDX-1i signals are skipped without one",
     )
+    parser.add_argument(
+        "--proc-track-path",
+        default=os.environ.get("PROC_TRACK_PATH"),
+        help="Path to a CLS-1000/proc_track checkout; skipped without one",
+    )
+    parser.add_argument(
+        "--proc-track-session",
+        default=os.environ.get("PROC_TRACK_SESSION"),
+        help="Session to replay from proc_track's cache (default: --session-key)",
+    )
+    parser.add_argument(
+        "--proc-track-only",
+        action="store_true",
+        help="Run only the proc_track import, no network adapters",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
+    proc_track_session = args.proc_track_session or args.session_key
+    if args.proc_track_path and not proc_track_session:
+        parser.error("--proc-track-path needs --proc-track-session or --session-key")
+    if args.proc_track_only and not args.proc_track_path:
+        parser.error("--proc-track-only needs --proc-track-path")
 
-    adapters: list[LazLongAdapter] = [DelosEconAdapter()]
-    if args.session_key:
-        adapters.append(UbikOregonAdapter(args.session_key))
-    if os.environ.get("CONGRESS_API_KEY"):
-        adapters.append(SeldonCivicAdapter())
+    adapters: list[LazLongAdapter] = []
+    if not args.proc_track_only:
+        adapters.append(DelosEconAdapter())
+        if args.session_key:
+            adapters.append(UbikOregonAdapter(args.session_key))
+        if os.environ.get("CONGRESS_API_KEY"):
+            adapters.append(SeldonCivicAdapter())
 
     enricher = OllamaEnricher(model=args.ollama_model)
     with psycopg.connect(args.dsn, autocommit=True) as conn:
@@ -392,6 +448,14 @@ def main(argv: list[str] | None = None) -> int:
                 reports["pdx1_importer"] = triage_packets(
                     pdx_packets, "oregon_civic", conn, enricher
                 )
+        if args.proc_track_path:
+            try:
+                reports["proc_track_importer"] = run_proc_track(
+                    args.proc_track_path, proc_track_session, conn, enricher
+                )
+            except ProcTrackError as error:
+                logger.error("proc_track import failed: %s", error)
+                return 1
 
     summary = {
         name: {"written": len(report.written), "rejected": len(report.rejected)}

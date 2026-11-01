@@ -1,6 +1,5 @@
 """Tests for spec1_bridge/pdx1_importer.py."""
 
-from datetime import UTC, datetime
 import json
 from pathlib import Path
 from unittest.mock import patch
