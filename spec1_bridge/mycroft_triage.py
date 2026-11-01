@@ -32,6 +32,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from newsroom.harlan_eternity.custody import extract_domain
+from spec1_bridge.pdx1_importer import import_pdx1_signals
 from spec1_bridge.adapters.base_lazlong import (
     LazLongAdapter,
     excerpt_is_verbatim,
@@ -365,6 +366,11 @@ def main(argv: list[str] | None = None) -> int:
         "--ollama-model",
         default=os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL),
     )
+    parser.add_argument(
+        "--pdx1-store",
+        default=os.environ.get("PDX1_STORE_PATH"),
+        help="Path to pdx1_signals.jsonl; PDX-1i signals are skipped without one",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
 
@@ -380,6 +386,12 @@ def main(argv: list[str] | None = None) -> int:
             adapter.adapter_name: run_adapter(adapter, conn, enricher)
             for adapter in adapters
         }
+        if args.pdx1_store:
+            pdx_packets = import_pdx1_signals(args.pdx1_store)
+            if pdx_packets:
+                reports["pdx1_importer"] = triage_packets(
+                    pdx_packets, "oregon_civic", conn, enricher
+                )
 
     summary = {
         name: {"written": len(report.written), "rejected": len(report.rejected)}
