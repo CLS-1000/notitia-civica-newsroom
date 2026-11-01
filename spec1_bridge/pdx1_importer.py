@@ -8,7 +8,12 @@ Spec1LeadPacket objects for newsroom triage.
 The record fields this reads, from pdx-1i src/pdx1/models.py:
 
     record_id, source_type, pattern, outcome, priority, tier, anomaly,
-    entity_ids, url, published_at
+    entity_ids, url, published_at, origin
+
+origin is how pdx-1i read the payload: live, cache (last-good after a failed
+fetch) or fixture (an invented test payload). Only live and cache are public
+records. A record with any other origin, or none (written before pdx-1i stamped
+it), is skipped as not_live before anything is fetched.
 
 priority is ELEVATED | STANDARD | MONITOR. tier is pdx-1i's own evidence
 grade, HARD_RECORD | REPORTED | INFERRED. anomaly is null unless the record
@@ -69,6 +74,7 @@ PRIORITY_SCORE: Final = {"MONITOR": 30.0, "STANDARD": 45.0, "ELEVATED": 60.0}
 # 3 sigma, pdx-1i's publish-eligible TIER_1 band, maps to 60; 5 sigma caps at 100.
 POINTS_PER_SIGMA: Final = 20.0
 RECORD_TIERS: Final = frozenset({"HARD_RECORD", "REPORTED", "INFERRED"})
+PUBLIC_ORIGINS: Final = frozenset({"live", "cache"})
 EXCERPT_CHARS: Final = 300
 
 # Pages that list or search filings rather than state one. Seen on Kali
@@ -121,6 +127,7 @@ class Pdx1Record:
     entity_ids: list[str]
     url: str | None
     published_at: datetime
+    origin: str | None = None
 
 
 @dataclass(slots=True)
@@ -210,6 +217,7 @@ def parse_record(line: str) -> Pdx1Record:
         entity_ids=[str(item) for item in entity_ids] if isinstance(entity_ids, list) else [],
         url=url if isinstance(url, str) and url else None,
         published_at=published_at,
+        origin=raw.get("origin") if isinstance(raw.get("origin"), str) else None,
     )
 
 
@@ -314,6 +322,9 @@ def import_pdx1_signals(
                 result.skipped["malformed"] += 1
                 result.errors.append(f"line {number}: {error}")
                 continue
+            if record.origin not in PUBLIC_ORIGINS:
+                result.skipped["not_live"] += 1
+                continue
             if PRIORITY_RANK[record.priority] < floor:
                 result.skipped["below_priority"] += 1
                 continue
@@ -371,6 +382,7 @@ def import_pdx1_signals(
                     "pdx1_record_id": record.record_id,
                     "source_type": record.source_type,
                     "pdx1_tier": record.tier,
+                    "pdx1_origin": record.origin,
                     "entity_ids": record.entity_ids,
                     "pattern_stated": bool(
                         record.pattern and excerpt_is_verbatim(record.pattern, text)

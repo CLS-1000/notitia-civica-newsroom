@@ -70,6 +70,7 @@ def _record(**overrides: Any) -> dict[str, Any]:
         "url": ORESTAR_URL,
         "published_at": published.isoformat().replace("+00:00", "Z"),
         "created_at": "2026-11-01T14:41:18.943198Z",
+        "origin": "live",
     }
     record.update(overrides)
     return record
@@ -386,3 +387,26 @@ def test_landing_and_search_detection() -> None:
     assert pdx1_importer.is_search_form(SEARCH_URL, SEARCH_PAGE)
     assert not pdx1_importer.is_search_form(SEARCH_URL, ORESTAR_PAGE)
     assert not pdx1_importer.is_search_form(PRESS_URL, SEARCH_PAGE)
+
+
+def test_only_live_and_cache_records_are_imported(tmp_path: Path) -> None:
+    """Fixture replays and pre-origin records are refused before any fetch."""
+    web = Web()
+    no_origin = _record(record_id="rec_old")
+    del no_origin["origin"]
+    store = _write_store(
+        tmp_path / "s.jsonl",
+        [
+            _record(record_id="rec_live"),
+            _record(record_id="rec_cache", origin="cache", url=SEI_URL, pattern="Statement of Economic Interest"),
+            _record(record_id="rec_fixture", origin="fixture"),
+            no_origin,
+            _record(record_id="rec_odd", origin="synthetic"),
+        ],
+    )
+    result = import_pdx1_signals(store, _allocator(), archive_dir=tmp_path / "a", transport=web.transport)
+
+    assert set(_by_record(result.packets)) == {"rec_live", "rec_cache"}
+    assert result.skipped == {"not_live": 3}
+    assert sorted(web.requests) == sorted([ORESTAR_URL, SEI_URL])
+    assert _by_record(result.packets)["rec_cache"].source_artifacts[0].metadata["pdx1_origin"] == "cache"
