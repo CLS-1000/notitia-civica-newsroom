@@ -1,0 +1,36 @@
+First, apply two quick refinements to newsroom/dors_venabili/gatekeeper.py:
+1. In check_source_diversity(), change the single-document FACT BRIEF exemption to check unique sources: `len(set(citations)) == 1`.
+2. Expand the loaded-language regex to catch variants: `r"\b(kickback|fraudulent|nefarious|corrupt)\s+scheme\b"` and `r"\bplott?(ing|s|ed)?\s+to\b"`. Verify all 407 tests pass and commit.
+
+Then, build all deliverables for Phase 3 of Notitia Civica (Public Reader Surface in Astro 5). Use modern native CSS with design tokens. Zero third-party trackers or heavy JS frameworks. Page weight budget < 80KB. Enforce strict WCAG 2.2 Level AA compliance and 100% print-first styling.
+
+SPECIFICATION:
+1. web_public/src/styles/:
+   - tokens.css: All CSS custom properties from the Civic Proof design system (--nc-bg-paper: #F7F5F0, --nc-ink-primary: #141619, --nc-accent-civic: #1D4E56, Tier 1-4 tokens, and Domains 5/6 sociology quarantine palette). Fluid clamp() type scale and tabular-nums.
+   - proof-stamp.css: Signature Editorial Proof Header & Footer Stamp (epistemic badges, evidence bar meter, editor sign-off, SHA-256 copy chip).
+   - epistemic-ui.css: Inline citation chips [S-XXXX] with accessible popovers, side-by-side Verified vs. Uncertain callouts, Steelman comparison grid, and Sociology Quarantine frame.
+   - print.css: 100% @media print rules turning briefs into clean 2-column physical briefing sheets with expanded URLs and no cut-off elements.
+
+2. web_public/src/components/:
+   - EditorialProofHeader.astro: Accepts badge_type, proof_hash, editor_name, source_count, evidence_bar.
+   - InlineCitation.astro: Accessible citation tag linking to the footer ledger.
+   - EpistemicGrid.astro: Verified vs. Uncertain container.
+   - SteelmanBox.astro: Dual-column competing arguments container.
+   - SociologyQuarantine.astro: Striped narrative phenomenon container for Domains 5 & 6.
+   - SourceLedgerFooter.astro: Full cryptographic source table with SHA-256 digests and WARC archive links.
+   - CorrectionsDiff.astro: Visual <del> and <ins> diff block with timestamps.
+
+3. web_public/src/pages/:
+   - index.astro: Broadsheet masthead, daily World State Brief (3-part cards: What Happened, Primary Evidence, Why It Matters), and featured explainer.
+   - citizens-cognisance/[slug].astro: Long-form explainer with sticky Primary Source Margin Rail (sidenotes that collapse into accordions on mobile).
+   - oregon-civic-tracker.astro: High-density, keyboard-accessible table for Oregon/Portland measures with OLIS docket links.
+   - trust/: methodology.astro, ownership.astro (EVASTARARCANA LLC commercial disclosure), and corrections.astro.
+
+4. web_public/scripts/export_verified.py:
+   - Standalone Python export script that connects to radiant_ledger and dumps ONLY records where `status = 'published' AND analysis_tier = 'llm_verified' AND human_approved = TRUE` into Astro content collections / JSON data files.
+
+5. CI/CD & Accessibility Gates:
+   - web_public/pa11y.json: Configured for WCAG2AA across all static routes.
+   - .github/workflows/ci_gates.yml: Builds Astro site, runs pa11y-ci, and checks CSS with stylelint to ban non-token hardcoded hex values.
+
+Run tests and Astro build verification to ensure everything builds cleanly without errors.

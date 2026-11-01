@@ -1,0 +1,23 @@
+---
+import type { Steelman } from "../lib/data";
+
+interface Props {
+  steelman: Steelman;
+}
+
+const { steelman } = Astro.props;
+---
+
+<section aria-labelledby="steelman-heading">
+  <h2 id="steelman-heading">The strongest case on each side</h2>
+  <div class="steelman-grid">
+    <div class="steelman-side">
+      <h3>{steelman.for_label}</h3>
+      <p>{steelman.for_text}</p>
+    </div>
+    <div class="steelman-side">
+      <h3>{steelman.against_label}</h3>
+      <p>{steelman.against_text}</p>
+    </div>
+  </div>
+</section>

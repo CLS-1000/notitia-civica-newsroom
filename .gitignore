@@ -14,3 +14,8 @@ archive/
 
 # Local spool for failed polls
 data/
+
+# Public site build output
+web_public/node_modules/
+web_public/dist/
+web_public/.astro/

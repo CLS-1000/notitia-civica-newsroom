@@ -1,0 +1,20 @@
+{
+  "defaults": {
+    "standard": "WCAG2AA",
+    "runners": ["htmlcs", "axe"],
+    "timeout": 30000,
+    "wait": 250,
+    "chromeLaunchConfig": {
+      "args": ["--no-sandbox", "--disable-dev-shm-usage"]
+    }
+  },
+  "urls": [
+    "http://127.0.0.1:4321/",
+    "http://127.0.0.1:4321/citizens-cognisance/sample-water-audit/",
+    "http://127.0.0.1:4321/citizens-cognisance/sample-retracted-brief/",
+    "http://127.0.0.1:4321/oregon-civic-tracker/",
+    "http://127.0.0.1:4321/trust/methodology/",
+    "http://127.0.0.1:4321/trust/ownership/",
+    "http://127.0.0.1:4321/trust/corrections/"
+  ]
+}

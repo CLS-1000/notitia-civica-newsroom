@@ -1,0 +1,79 @@
+/* Civic Proof design tokens. This is the only stylesheet allowed to name a color. */
+:root {
+  color-scheme: light;
+
+  /* Surfaces and ink */
+  --nc-bg-paper: #F7F5F0;
+  --nc-bg-card: #FFFEFB;
+  --nc-bg-sunken: #ECE8DF;
+  --nc-ink-primary: #141619;
+  --nc-ink-muted: #474C52;
+  --nc-ink-inverse: #FFFEFB;
+  --nc-rule: #C9C4B8;
+  --nc-rule-strong: #5F6369;
+  --nc-accent-civic: #1D4E56;
+  --nc-focus: #1D4E56;
+
+  /* Evidence tiers */
+  --nc-tier-1: #17553A;
+  --nc-tier-1-bg: #E3EFE7;
+  --nc-tier-2: #1C4A85;
+  --nc-tier-2-bg: #E2EAF4;
+  --nc-tier-3: #6E4400;
+  --nc-tier-3-bg: #F5EAD6;
+  --nc-tier-4: #8A1F2B;
+  --nc-tier-4-bg: #F7E4E5;
+
+  /* Epistemic states */
+  --nc-verified: #17553A;
+  --nc-verified-bg: #E3EFE7;
+  --nc-uncertain: #6E4400;
+  --nc-uncertain-bg: #F5EAD6;
+  --nc-diff-del: #8A1F2B;
+  --nc-diff-del-bg: #F7E4E5;
+  --nc-diff-ins: #17553A;
+  --nc-diff-ins-bg: #E3EFE7;
+  --nc-sample-bg: #6E4400;
+  --nc-retracted: #8A1F2B;
+  --nc-retracted-bg: #F7E4E5;
+
+  /* Domains 5 and 6: sociology quarantine */
+  --nc-domain-5: #55287D;
+  --nc-domain-5-bg: #F0EAF6;
+  --nc-domain-5-stripe: #E2D7EE;
+  --nc-domain-6: #832658;
+  --nc-domain-6-bg: #F7E9F0;
+  --nc-domain-6-stripe: #EFD6E3;
+
+  /* Print */
+  --nc-print-paper: #FFFFFF;
+  --nc-print-ink: #000000;
+  --nc-print-rule: #555555;
+
+  /* Fluid type scale */
+  --nc-text-xs: clamp(0.78rem, 0.76rem + 0.1vw, 0.84rem);
+  --nc-text-sm: clamp(0.88rem, 0.85rem + 0.15vw, 0.95rem);
+  --nc-text-base: clamp(1rem, 0.96rem + 0.2vw, 1.13rem);
+  --nc-text-lg: clamp(1.2rem, 1.12rem + 0.4vw, 1.45rem);
+  --nc-text-xl: clamp(1.5rem, 1.32rem + 0.9vw, 2.1rem);
+  --nc-text-2xl: clamp(1.9rem, 1.55rem + 1.75vw, 3.1rem);
+  --nc-text-masthead: clamp(2.3rem, 1.6rem + 3.5vw, 4.6rem);
+
+  /* Families */
+  --nc-font-read: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+  --nc-font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --nc-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --nc-numeric: tabular-nums;
+
+  /* Spacing and form */
+  --nc-space-1: 0.25rem;
+  --nc-space-2: 0.5rem;
+  --nc-space-3: 0.75rem;
+  --nc-space-4: 1rem;
+  --nc-space-5: 1.5rem;
+  --nc-space-6: 2.5rem;
+  --nc-measure: 68ch;
+  --nc-page: 76rem;
+  --nc-radius: 2px;
+  --nc-target-min: 1.5rem;
+}

@@ -1,0 +1,99 @@
+---
+import Base from "../../layouts/Base.astro";
+---
+
+<Base
+  title="Methodology | Notitia Civica"
+  description="How Notitia Civica collects sources, tests drafts, and proves editor sign-off."
+>
+  <div class="prose">
+    <h1>Methodology</h1>
+    <p>
+      Software finds leads and helps write drafts. A named human editor decides
+      what is published.
+    </p>
+
+    <h2>Sealing sources</h2>
+    <p>
+      Each source is saved exactly as retrieved, and its SHA-256 digest is
+      recorded in an append-only ledger, which refuses updates and deletions of
+      sealed records. The source ledger on every article lists those digests, so
+      a sealed copy can be checked against them.
+    </p>
+
+    <h2>Source tiers</h2>
+    <dl>
+      <dt><strong>Tier 1 primary</strong></dt>
+      <dd>The original record, such as enrolled bill text or a regulator's filing.</dd>
+      <dt><strong>Tier 2 institutional</strong></dt>
+      <dd>Material published by an established institution.</dd>
+      <dt><strong>Tier 3 secondary</strong></dt>
+      <dd>Reporting or analysis that describes a primary record.</dd>
+      <dt><strong>Tier 4 unverified</strong></dt>
+      <dd>Material that has not yet been checked against a stronger source.</dd>
+    </dl>
+
+    <h2>Finding leads</h2>
+    <p>
+      Rule-based software scores public records for unusual signals. Each lead
+      must pass four deterministic checks: deduplication, authority,
+      corroboration, and freshness and anomaly.
+    </p>
+
+    <h2>Drafting</h2>
+    <p>
+      Drafts are written with Claude, an AI model made by Anthropic. It sees only
+      the sealed sources for that lead and must cite them. A local AI model may
+      add notes for editors, but those notes never decide whether a lead moves
+      forward and are never published as findings.
+    </p>
+
+    <h2>Automated gates</h2>
+    <p>Five checks must pass before a draft can be signed:</p>
+    <ol>
+      <li>Headlines cannot be questions, teasers, or clickbait.</li>
+      <li>Loaded language and anonymous attributions such as "critics say" are flagged.</li>
+      <li>
+        Every paragraph must cite a real source, and every direct quote must
+        appear word for word in a source that paragraph cites.
+      </li>
+      <li>
+        Personal data is flagged, and allegations against private people are
+        blocked until a right of reply is logged.
+      </li>
+      <li>
+        No single type of source can exceed 60% of citations. The exception is a
+        fact brief that rests on one Tier 1 primary document.
+      </li>
+    </ol>
+
+    <h2>Human sign-off</h2>
+    <p>
+      An editor confirms four things: they read every cited primary source,
+      checked every quote, reviewed the piece for fairness, and reviewed privacy
+      and defamation risk. The system then records a SHA-256 proof of the text,
+      its sources, the editor's name, and the time of signing.
+    </p>
+
+    <h2>Checking a proof</h2>
+    <p>
+      The proof hash is the SHA-256 of these lines joined by newlines: the article
+      text, the sorted source IDs one per line, the editor's name, and the UTC
+      signing time. Any change to those inputs produces a different hash.
+    </p>
+
+    <h2>Retractions</h2>
+    <p>
+      A retracted article stays online under a permanent notice that explains
+      why. The ledger refuses edits to that notice. The proof hash still covers
+      the text as signed, so it shows what we published, not that it stands.
+    </p>
+
+    <h2>What this does not prove</h2>
+    <p>
+      A proof shows what an editor signed and when. It does not show that an
+      article is correct. Automated gates catch specific patterns, not every
+      error, which is why uncertainties are published and corrections are public.
+    </p>
+  </div>
+</Base>

@@ -1,0 +1,11 @@
+{
+  "ignoreFiles": ["src/styles/tokens.css"],
+  "rules": {
+    "color-no-hex": [true, { "message": "Use a --nc-* token from tokens.css, not a hex value." }],
+    "color-named": ["never", { "message": "Use a --nc-* token from tokens.css, not a named color." }],
+    "function-disallowed-list": [
+      ["rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch"],
+      { "message": "Use a --nc-* token from tokens.css, not a color function." }
+    ]
+  }
+}

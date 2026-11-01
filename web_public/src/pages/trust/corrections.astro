@@ -1,0 +1,44 @@
+---
+import Base from "../../layouts/Base.astro";
+import CorrectionsDiff from "../../components/CorrectionsDiff.astro";
+import { articleUrl, corrections, formatDate, retractedArticles } from "../../lib/data";
+---
+
+<Base
+  title="Corrections | Notitia Civica"
+  description="Every correction and retraction of Notitia Civica reporting."
+>
+  <h1>Corrections and retractions</h1>
+  <p class="prose">
+    When we get something wrong, we show exactly what changed and when.
+    Retracted articles stay online, marked as retracted.
+  </p>
+
+  <h2>Retractions</h2>
+  {
+    retractedArticles.length === 0 ? (
+      <p class="empty-state">No articles have been retracted.</p>
+    ) : (
+      <ul class="retraction-list">
+        {retractedArticles.map((article) => (
+          <li>
+            <a href={articleUrl(article.slug)}>[RETRACTED] {article.headline}</a>
+            <p class="meta">
+              Retracted {formatDate(article.retraction?.retracted_at ?? article.published_at)}
+            </p>
+            <p>{article.retraction?.reason}</p>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  <h2>Corrections</h2>
+  {
+    corrections.length === 0 ? (
+      <p class="empty-state">No corrections have been published.</p>
+    ) : (
+      corrections.map((correction) => <CorrectionsDiff correction={correction} />)
+    )
+  }
+</Base>

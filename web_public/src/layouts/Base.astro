@@ -1,0 +1,89 @@
+---
+import "../styles/tokens.css";
+import "../styles/base.css";
+import "../styles/proof-stamp.css";
+import "../styles/epistemic-ui.css";
+import "../styles/print.css";
+import { IS_SAMPLE_BUILD } from "../lib/data";
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="data:," />
+    {IS_SAMPLE_BUILD && <meta name="robots" content="noindex" />}
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    {
+      IS_SAMPLE_BUILD && (
+        <p class="sample-banner">
+          Sample data build. Everything on this page is invented for testing.
+        </p>
+      )
+    }
+    <header class="site-header">
+      <nav class="site-nav page" aria-label="Main">
+        <ul>
+          <li class="brand"><a href="/">Notitia Civica</a></li>
+          <li><a href="/oregon-civic-tracker/">Oregon Civic Tracker</a></li>
+          <li><a href="/trust/methodology/">Methodology</a></li>
+          <li><a href="/trust/ownership/">Ownership</a></li>
+          <li><a href="/trust/corrections/">Corrections</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main id="content" class="page" tabindex="-1">
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <div class="page">
+        <p>
+          Notitia Civica is published by EVASTARARCANA LLC. This site uses no
+          trackers.
+        </p>
+      </div>
+    </footer>
+    <script>
+      for (const button of document.querySelectorAll<HTMLButtonElement>(
+        ".copy-chip",
+      )) {
+        button.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(button.dataset.copy ?? "");
+            button.textContent = "Copied";
+          } catch {
+            button.textContent = "Select the hash to copy";
+          }
+        });
+      }
+
+      // Sidenotes ship open, so they work without JavaScript and in print.
+      // Print narrows the page, so it must not count as a small screen.
+      const wide = window.matchMedia("(min-width: 60rem)");
+      const print = window.matchMedia("print");
+      const sidenotes = document.querySelectorAll<HTMLDetailsElement>(".sidenote");
+      const sync = (): void => {
+        for (const note of sidenotes) {
+          note.open = wide.matches || print.matches;
+        }
+      };
+      sync();
+      wide.addEventListener("change", sync);
+      print.addEventListener("change", sync);
+    </script>
+  </body>
+</html>

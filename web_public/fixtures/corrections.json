@@ -1,0 +1,10 @@
+[
+  {
+    "slug": "sample-water-audit",
+    "headline": "SAMPLE: Fictional district audit",
+    "corrected_at": "2026-10-02T17:30:00+00:00",
+    "reason": "Sample correction for layout and accessibility checks.",
+    "before": "The audit covered 12 sites.",
+    "after": "The audit covered 14 sites."
+  }
+]

@@ -1,0 +1,133 @@
+---
+import Base from "../../layouts/Base.astro";
+import EditorialProofHeader from "../../components/EditorialProofHeader.astro";
+import EpistemicGrid from "../../components/EpistemicGrid.astro";
+import InlineCitation from "../../components/InlineCitation.astro";
+import RetractionNotice from "../../components/RetractionNotice.astro";
+import SociologyQuarantine from "../../components/SociologyQuarantine.astro";
+import SourceLedgerFooter from "../../components/SourceLedgerFooter.astro";
+import SteelmanBox from "../../components/SteelmanBox.astro";
+import { parseBody } from "../../lib/article";
+import {
+  articles,
+  formatDate,
+  formatDateTime,
+  tierClass,
+  tierLabel,
+} from "../../lib/data";
+import type { Article, Source } from "../../lib/data";
+
+export function getStaticPaths() {
+  return articles.map((article) => ({
+    params: { slug: article.slug },
+    props: { article },
+  }));
+}
+
+interface Props {
+  article: Article;
+}
+
+const { article } = Astro.props;
+const retracted = article.status === "retracted";
+const headline = retracted ? `[RETRACTED] ${article.headline}` : article.headline;
+const blocks = parseBody(article);
+const sourceById = new Map<string, Source>(
+  article.sources.map((item) => [item.source_id, item]),
+);
+const signedAt = `${formatDateTime(article.signed_at)} UTC`;
+const proof = {
+  badge_type: article.badge_type,
+  proof_hash: article.editorial_proof_hash,
+  editor_name: article.editor_name,
+  source_count: article.sources.length,
+  evidence_bar: article.evidence_bar,
+  signed_at: signedAt,
+};
+---
+
+<Base
+  title={`${headline} | Notitia Civica`}
+  description={retracted ? headline : (article.deck ?? article.headline)}
+>
+  <article>
+    <header class="print-span">
+      {retracted && article.retraction && <RetractionNotice retraction={article.retraction} />}
+      <h1>{headline}</h1>
+      {article.deck && <p class="lede">{article.deck}</p>}
+      <p class="meta">
+        Published <time datetime={article.published_at}>{formatDate(article.published_at)}</time>
+      </p>
+    </header>
+
+    <EditorialProofHeader {...proof} />
+
+    <div class="explainer-layout">
+      <div class="prose print-columns">
+        {
+          blocks.map((block, blockIndex) => {
+            if (block.kind === "heading") {
+              const Heading = `h${block.level}`;
+              return <Heading>{block.text}</Heading>;
+            }
+            return (
+              <p>
+                {block.segments.map((segment, segmentIndex) => {
+                  const source = segment.sourceId
+                    ? sourceById.get(segment.sourceId)
+                    : undefined;
+                  return source ? (
+                    <InlineCitation
+                      source={source}
+                      occurrence={`${blockIndex}-${segmentIndex}`}
+                    />
+                  ) : (
+                    segment.text
+                  );
+                })}
+              </p>
+            );
+          })
+        }
+      </div>
+
+      <aside class="margin-rail" aria-label="Primary source notes">
+        <h2>Primary sources</h2>
+        {
+          article.sources.map((source) => (
+            <details class="sidenote" open>
+              <summary>{source.source_id}</summary>
+              <p>
+                <span class:list={["tier-tag", tierClass(source.tier)]}>
+                  {tierLabel(source.tier)}
+                </span>
+              </p>
+              <p>
+                {source.url ? (
+                  <a href={source.url}>{source.domain}</a>
+                ) : (
+                  source.domain
+                )}
+              </p>
+              <p>
+                <a href={`#ledger-${source.source_id}`}>
+                  Digest and archive for {source.source_id}
+                </a>
+              </p>
+            </details>
+          ))
+        }
+      </aside>
+    </div>
+
+    <EpistemicGrid
+      verified={article.verified_claims.map((item) => item.claim)}
+      uncertain={article.uncertainty_disclosures}
+      retracted={retracted}
+    />
+    {article.steelman && <SteelmanBox steelman={article.steelman} />}
+    {article.quarantine && <SociologyQuarantine quarantine={article.quarantine} />}
+    <SourceLedgerFooter sources={article.sources} />
+    <EditorialProofHeader {...proof} variant="footer" />
+  </article>
+</Base>

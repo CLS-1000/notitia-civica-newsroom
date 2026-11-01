@@ -1,0 +1,29 @@
+---
+import { tierClass, tierLabel } from "../lib/data";
+import type { Source } from "../lib/data";
+
+interface Props {
+  source: Source;
+  // Keeps popover IDs unique when a source is cited more than once.
+  occurrence: string;
+}
+
+const { source, occurrence } = Astro.props;
+const popoverId = `cite-${source.source_id}-${occurrence}`;
+---
+
+<span class="citation"
+  ><a class="citation-chip" href={`#ledger-${source.source_id}`}
+    >[{source.source_id}]</a
+  ><button
+    class="citation-more"
+    type="button"
+    popovertarget={popoverId}
+    aria-label={`About source ${source.source_id}`}>i</button
+  ><span id={popoverId} class="citation-popover" popover="auto"
+    ><strong>{source.source_id}</strong>
+    <span class:list={["tier-tag", tierClass(source.tier)]}
+      >{tierLabel(source.tier)}</span
+    ><br />{source.domain}</span
+  ></span
+>

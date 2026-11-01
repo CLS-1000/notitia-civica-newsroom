@@ -1,0 +1,74 @@
+---
+import { formatDateTime, tierClass, tierLabel } from "../lib/data";
+import type { Source } from "../lib/data";
+
+interface Props {
+  sources: Source[];
+}
+
+const { sources } = Astro.props;
+---
+
+<section class="ledger" aria-labelledby="ledger-heading">
+  <h2 id="ledger-heading">Source ledger</h2>
+  <div
+    class="table-region"
+    role="region"
+    aria-labelledby="ledger-heading"
+    tabindex="0"
+  >
+    <table class="data">
+      <caption>
+        Every cited source, with the SHA-256 digest of the copy sealed at
+        retrieval. Times are UTC.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Source</th>
+          <th scope="col">Tier</th>
+          <th scope="col">Origin</th>
+          <th scope="col">Retrieved</th>
+          <th scope="col">SHA-256</th>
+          <th scope="col">Archive</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          sources.map((source) => (
+            <tr id={`ledger-${source.source_id}`}>
+              <th scope="row" class="mono">
+                {source.source_id}
+              </th>
+              <td>
+                <span class:list={["tier-tag", tierClass(source.tier)]}>
+                  {tierLabel(source.tier)}
+                </span>
+              </td>
+              <td>
+                {source.url ? (
+                  <a href={source.url}>{source.domain}</a>
+                ) : (
+                  source.domain
+                )}
+              </td>
+              <td>{formatDateTime(source.retrieved_at)}</td>
+              <td class="mono">{source.raw_sha256}</td>
+              <td>
+                {source.archive_url ? (
+                  <a
+                    href={source.archive_url}
+                    aria-label={`Sealed copy of ${source.source_id}`}
+                  >
+                    Sealed copy
+                  </a>
+                ) : (
+                  "Not yet public"
+                )}
+              </td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+</section>

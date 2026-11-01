@@ -1,0 +1,25 @@
+{
+  "name": "notitia-civica-public",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "build:sample": "NC_DATA_DIR=fixtures astro build",
+    "preview": "astro preview --host 127.0.0.1 --port 4321",
+    "check": "astro check",
+    "lint:css": "stylelint \"src/styles/**/*.css\"",
+    "budget": "node scripts/check_budget.mjs",
+    "a11y": "bash scripts/run_a11y.sh"
+  },
+  "dependencies": {
+    "astro": "^5.18.2"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "pa11y-ci": "^4.0.0",
+    "stylelint": "^17.16.0",
+    "typescript": "^5.8.3"
+  }
+}

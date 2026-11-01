@@ -1,0 +1,102 @@
+---
+import Base from "../layouts/Base.astro";
+import { firstParagraph } from "../lib/article";
+import {
+  articleUrl,
+  formatDate,
+  liveArticles,
+  tierClass,
+  tierLabel,
+} from "../lib/data";
+import type { Article } from "../lib/data";
+
+const isExplainer = (item: Article): boolean => item.badge_type === "DEEP EXPLAINER";
+const latest = liveArticles[0];
+const briefDay = latest?.published_at.slice(0, 10);
+const briefs = liveArticles.filter((item) => item.published_at.startsWith(briefDay ?? "-"));
+const featured = liveArticles.find(isExplainer);
+
+function primaryEvidence(article: Article) {
+  const claim = article.verified_claims[0];
+  const cited = article.sources.find((item) => item.source_id === claim?.source_ids[0]);
+  return { claim, source: cited ?? article.sources[0] };
+}
+---
+
+<Base
+  title="Notitia Civica"
+  description="Public-interest reporting in which every claim links to a sealed primary source."
+>
+  <div class="masthead">
+    <p class="masthead-title">Notitia Civica</p>
+    <p class="masthead-line">
+      {latest ? `Latest edition: ${formatDate(latest.published_at)}` : "No edition published yet"}
+    </p>
+  </div>
+
+  <h1>World State Brief</h1>
+
+  {
+    briefs.length === 0 ? (
+      <p class="empty-state">
+        No verified reporting has been published yet. Nothing appears here until a
+        named editor has signed it off.
+      </p>
+    ) : (
+      <div class="brief-grid">
+        {briefs.map((article) => {
+          const evidence = primaryEvidence(article);
+          return (
+            <article class="brief-card">
+              <h2>
+                <a href={articleUrl(article.slug)}>{article.headline}</a>
+              </h2>
+              <dl class="brief-parts">
+                <div>
+                  <dt>What Happened</dt>
+                  <dd>{firstParagraph(article)}</dd>
+                </div>
+                <div>
+                  <dt>Primary Evidence</dt>
+                  <dd>
+                    {evidence.claim?.claim}{" "}
+                    {evidence.source && (
+                      <>
+                        <span
+                          class:list={["tier-tag", tierClass(evidence.source.tier)]}
+                        >
+                          {tierLabel(evidence.source.tier)}
+                        </span>{" "}
+                        {evidence.source.url ? (
+                          <a href={evidence.source.url}>{evidence.source.domain}</a>
+                        ) : (
+                          evidence.source.domain
+                        )}
+                      </>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Why It Matters</dt>
+                  <dd>{article.deck}</dd>
+                </div>
+              </dl>
+            </article>
+          );
+        })}
+      </div>
+    )
+  }
+
+  {
+    featured && (
+      <section class="featured" aria-labelledby="featured-heading">
+        <h2 id="featured-heading">Featured explainer</h2>
+        <h3>
+          <a href={articleUrl(featured.slug)}>{featured.headline}</a>
+        </h3>
+        <p>{featured.deck}</p>
+      </section>
+    )
+  }
+</Base>

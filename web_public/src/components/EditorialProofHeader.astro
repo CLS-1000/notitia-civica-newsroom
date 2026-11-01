@@ -1,0 +1,55 @@
+---
+interface Props {
+  badge_type: string;
+  proof_hash: string;
+  editor_name: string;
+  source_count: number;
+  evidence_bar: number;
+  signed_at?: string;
+  variant?: "header" | "footer";
+}
+
+const {
+  badge_type,
+  proof_hash,
+  editor_name,
+  source_count,
+  evidence_bar,
+  signed_at,
+  variant = "header",
+} = Astro.props;
+const label =
+  variant === "header" ? "Editorial proof" : "Editorial proof, repeated at end";
+---
+
+<section
+  class:list={["proof-stamp", { "proof-footer-stamp": variant === "footer" }]}
+  aria-label={label}
+>
+  <p class="proof-field">
+    <span class="proof-label">Badge</span>
+    <span class="badge">{badge_type}</span>
+  </p>
+  <p class="proof-field">
+    <span class="proof-label">Editor sign-off</span>
+    {editor_name}{signed_at && `, ${signed_at}`}
+  </p>
+  <p class="proof-field">
+    <span class="proof-label">Evidence bar</span>
+    <meter
+      class="evidence-meter"
+      min="0"
+      max="100"
+      value={evidence_bar}
+      aria-label="Share of sources that are Tier 1 primary"></meter>
+    {evidence_bar}% of {source_count}
+    {source_count === 1 ? "source is" : "sources are"} Tier 1 primary
+  </p>
+  <div class="proof-field proof-hash">
+    <span class="proof-label">SHA-256 proof</span>
+    <code class="hash-value">{proof_hash}</code>
+    <button class="copy-chip" type="button" data-copy={proof_hash}>
+      Copy proof hash
+    </button>
+  </div>
+</section>

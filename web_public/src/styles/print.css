@@ -1,0 +1,66 @@
+/* Physical briefing sheet: two columns, full URLs, nothing cut off. */
+@media print {
+  @page { margin: 14mm 12mm; }
+
+  *, *::before, *::after {
+    background: var(--nc-print-paper) !important;
+    color: var(--nc-print-ink) !important;
+    box-shadow: none !important;
+  }
+
+  body { font-size: 10pt; line-height: 1.35; }
+
+  .skip-link, .site-nav, .copy-chip, .citation-more, .citation-popover { display: none !important; }
+
+  .page { width: 100%; max-width: none; }
+
+  .print-columns, .brief-grid {
+    display: block;
+    column-count: 2;
+    column-gap: 8mm;
+    column-rule: 0.5pt solid var(--nc-print-rule);
+  }
+
+  .prose { max-width: none; }
+  .explainer-layout { display: block; }
+  .margin-rail { position: static; max-height: none; overflow: visible; }
+  .sidenote::details-content { display: block; content-visibility: visible; }
+  .sidenote summary { list-style: none; }
+  .table-region { overflow: visible; }
+
+  .print-span, .site-header, .masthead, .proof-stamp { column-span: all; }
+
+  h1 { font-size: 20pt; }
+  h2 { font-size: 13pt; }
+  h3 { font-size: 11pt; }
+  h1, h2, h3 { break-after: avoid; }
+  p { orphans: 3; widows: 3; }
+
+  .brief-card, .proof-stamp, .epistemic-panel, .steelman-side, .quarantine, .corrections-diff, tr {
+    break-inside: avoid;
+  }
+
+  .brief-card, .proof-stamp, .epistemic-panel, .steelman-side, .quarantine, .corrections-diff {
+    border: 0.5pt solid var(--nc-print-rule);
+  }
+
+  .quarantine { border-style: dashed; }
+  .retraction-notice { border: 2pt solid var(--nc-print-ink); }
+
+  .prose a[href^="http"]::after, .brief-card a[href^="http"]::after, .ledger a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font: 8pt var(--nc-font-mono);
+    overflow-wrap: anywhere;
+  }
+
+  .citation-chip { border: 0; }
+  .citation { white-space: normal; }
+
+  table.data { table-layout: fixed; font-size: 8pt; }
+  table.data th, table.data td { overflow-wrap: anywhere; }
+  thead { display: table-header-group; }
+
+  .mono, .hash-value { font-size: 7pt; overflow-wrap: anywhere; }
+  del { text-decoration: line-through !important; }
+  ins { text-decoration: underline !important; }
+}

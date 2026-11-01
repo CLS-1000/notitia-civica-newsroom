@@ -1,0 +1,21 @@
+---
+import { formatDate } from "../lib/data";
+import type { Retraction } from "../lib/data";
+
+interface Props {
+  retraction: Retraction;
+}
+
+// Rendered from status alone: no prop or field can hide it on a retracted article.
+const { retraction } = Astro.props;
+---
+
+<section class="retraction-notice" aria-label="Retraction notice">
+  <p class="retraction-label">[RETRACTED]</p>
+  <p>
+    Retracted <time datetime={retraction.retracted_at}>{formatDate(retraction.retracted_at)}</time>.
+    Do not rely on this article. It stays online as a record of what we published.
+  </p>
+  <p><strong>Why it was retracted:</strong> {retraction.reason}</p>
+  <p>The editorial proof below covers the original signed text, not its accuracy.</p>
+</section>

@@ -1,0 +1,44 @@
+---
+interface Props {
+  verified: string[];
+  uncertain: string[];
+  retracted?: boolean;
+}
+
+const { verified, uncertain, retracted = false } = Astro.props;
+const verifiedHeading = retracted ? "Claimed at publication, now retracted" : "Verified";
+---
+
+<section
+  class="epistemic-grid"
+  aria-label={retracted ? "Retracted claims and open questions" : "What is verified and what is uncertain"}
+>
+  <div class="epistemic-panel epistemic-verified">
+    <h2>{verifiedHeading}</h2>
+    {
+      verified.length > 0 ? (
+        <ul>
+          {verified.map((item) => (
+            <li>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>No claims are listed as verified.</p>
+      )
+    }
+  </div>
+  <div class="epistemic-panel epistemic-uncertain">
+    <h2>Uncertain</h2>
+    {
+      uncertain.length > 0 ? (
+        <ul>
+          {uncertain.map((item) => (
+            <li>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>The editor recorded no open questions.</p>
+      )
+    }
+  </div>
+</section>

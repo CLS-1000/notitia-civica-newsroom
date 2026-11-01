@@ -1,0 +1,147 @@
+[
+  {
+    "slug": "sample-water-audit",
+    "section": "oregon_legislature",
+    "badge_type": "DEEP EXPLAINER",
+    "headline": "SAMPLE: Fictional district audit finds 14 closed sites",
+    "deck": "This invented story exists only to test layout, print, and accessibility.",
+    "body_markdown": "## What the sample audit says\n\nThe fictional district said \"we will restore the program\" at a hearing. [S-1042]\n\nCounty records list 14 closed sites. [S-1043]\n\n## What the sample leaves open\n\nThe sample audit period is not stated, and a long source reference helps test wrapping at narrow widths. [S-1042] [S-1044]",
+    "editor_name": "Sample Editor",
+    "editorial_proof_hash": "0637433ece7210c673b53edfce272ef31ef4004faca9890ea7f5c8304bebcffa",
+    "signed_at": "2026-10-01T16:00:00Z",
+    "published_at": "2026-10-01T16:00:00+00:00",
+    "verified_claims": [
+      {
+        "claim": "The fictional district committed to restoring the program.",
+        "source_ids": [
+          "S-1042"
+        ]
+      },
+      {
+        "claim": "County records list 14 closed sites.",
+        "source_ids": [
+          "S-1043"
+        ]
+      }
+    ],
+    "uncertainty_disclosures": [
+      "The sample audit period is not stated."
+    ],
+    "evidence_bar": 67,
+    "steelman": {
+      "for_label": "Case for the closures",
+      "for_text": "Sample argument: consolidating sites could reduce operating costs.",
+      "against_label": "Case against the closures",
+      "against_text": "Sample argument: closures could lengthen travel for rural residents."
+    },
+    "quarantine": {
+      "domain": 5,
+      "label": "Sample narrative phenomenon",
+      "text": "Sample text: a narrative is described here without being treated as a finding."
+    },
+    "sources": [
+      {
+        "source_id": "S-1042",
+        "url": "https://olis.oregonlegislature.gov/liz/2026R1/Downloads/MeasureDocument/HB4001/Introduced",
+        "domain": "olis.oregonlegislature.gov",
+        "tier": "tier_1_primary",
+        "raw_sha256": "3ac845aedb6949c175359d5d80feaf233e70f91abd87d383dc4aed0df077ce20",
+        "archive_url": "https://notitiacivica.com/archive/warc/S-1042.blob",
+        "retrieved_at": "2026-09-30T12:00:00+00:00"
+      },
+      {
+        "source_id": "S-1043",
+        "url": "https://www.example.gov/records/closed-sites",
+        "domain": "www.example.gov",
+        "tier": "tier_1_primary",
+        "raw_sha256": "b7f0c2d6a1e94f3b8c5d7e6f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+        "archive_url": null,
+        "retrieved_at": "2026-09-30T12:05:00+00:00"
+      },
+      {
+        "source_id": "S-1044",
+        "url": null,
+        "domain": "news.example.org",
+        "tier": "tier_3_secondary",
+        "raw_sha256": "c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2",
+        "archive_url": null,
+        "retrieved_at": "2026-09-30T12:10:00+00:00"
+      }
+    ],
+    "status": "published",
+    "retraction": null
+  },
+  {
+    "slug": "sample-fact-brief",
+    "section": "federal_legislation",
+    "badge_type": "FACT BRIEF",
+    "headline": "SAMPLE: Fictional act becomes law",
+    "deck": "A sample brief shows why the sample law would matter to readers.",
+    "body_markdown": "The fictional act became law after enrollment. [S-2001]",
+    "editor_name": "Sample Editor",
+    "editorial_proof_hash": "5fe53bd1e7470c1b2a3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293",
+    "signed_at": "2026-10-01T18:00:00Z",
+    "published_at": "2026-10-01T18:00:00+00:00",
+    "verified_claims": [
+      {
+        "claim": "The fictional act became law.",
+        "source_ids": [
+          "S-2001"
+        ]
+      }
+    ],
+    "uncertainty_disclosures": [],
+    "evidence_bar": 100,
+    "sources": [
+      {
+        "source_id": "S-2001",
+        "url": "https://www.congress.gov/119/bills/hr1234/BILLS-119hr1234enr.xml",
+        "domain": "www.congress.gov",
+        "tier": "tier_1_primary",
+        "raw_sha256": "d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5",
+        "archive_url": null,
+        "retrieved_at": "2026-10-01T15:00:00+00:00"
+      }
+    ],
+    "status": "published",
+    "retraction": null
+  },
+  {
+    "slug": "sample-retracted-brief",
+    "section": "federal_legislation",
+    "badge_type": "FACT BRIEF",
+    "headline": "SAMPLE: Fictional agency closed a depot",
+    "deck": "A sample brief shows how a retracted article appears.",
+    "body_markdown": "The fictional agency closed its depot. [S-2001]",
+    "editor_name": "Sample Editor",
+    "editorial_proof_hash": "5fe53bd1e7470c1b2a3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293",
+    "signed_at": "2026-09-20T18:00:00Z",
+    "published_at": "2026-09-20T18:00:00+00:00",
+    "verified_claims": [
+      {
+        "claim": "The fictional agency closed its depot.",
+        "source_ids": [
+          "S-2001"
+        ]
+      }
+    ],
+    "uncertainty_disclosures": [],
+    "evidence_bar": 100,
+    "sources": [
+      {
+        "source_id": "S-2001",
+        "url": "https://www.congress.gov/119/bills/hr1234/BILLS-119hr1234enr.xml",
+        "domain": "www.congress.gov",
+        "tier": "tier_1_primary",
+        "raw_sha256": "d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5",
+        "archive_url": null,
+        "retrieved_at": "2026-10-01T15:00:00+00:00"
+      }
+    ],
+    "status": "retracted",
+    "retraction": {
+      "reason": "Sample retraction: the fictional record cited was superseded, so the claim does not stand.",
+      "retracted_at": "2026-09-25T16:00:00+00:00"
+    }
+  }
+]

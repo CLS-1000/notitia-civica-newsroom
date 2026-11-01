@@ -1,0 +1,66 @@
+---
+import Base from "../layouts/Base.astro";
+import { articleUrl, formatDate, liveArticles, trackedMeasures } from "../lib/data";
+
+const measures = trackedMeasures(liveArticles);
+---
+
+<Base
+  title="Oregon Civic Tracker | Notitia Civica"
+  description="Oregon measures covered in verified reporting, with links to each OLIS docket."
+>
+  <h1 id="tracker-heading">Oregon Civic Tracker</h1>
+  <p class="prose">
+    Oregon measures that appear in signed-off reporting, with a link to each
+    official OLIS docket. This table lists covered measures, not every measure.
+  </p>
+  {
+    measures.length === 0 ? (
+      <p class="empty-state">No Oregon measures have been covered yet.</p>
+    ) : (
+      <div
+        class="table-region"
+        role="region"
+        aria-labelledby="tracker-heading"
+        tabindex="0"
+      >
+        <table class="data">
+          <caption>
+            {measures.length} covered {measures.length === 1 ? "measure" : "measures"}, newest first
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Measure</th>
+              <th scope="col">Session</th>
+              <th scope="col">Our reporting</th>
+              <th scope="col">Published</th>
+              <th scope="col">Tier 1 sources</th>
+              <th scope="col">Official docket</th>
+            </tr>
+          </thead>
+          <tbody>
+            {measures.map((item) => (
+              <tr>
+                <th scope="row">{item.measure}</th>
+                <td>{item.session}</td>
+                <td>
+                  <a href={articleUrl(item.slug)}>{item.headline}</a>
+                </td>
+                <td>{formatDate(item.published_at)}</td>
+                <td>{item.primary_sources}</td>
+                <td>
+                  <a
+                    href={item.docket}
+                    aria-label={`OLIS docket for ${item.measure}, ${item.session}`}
+                  >
+                    OLIS docket
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+</Base>

@@ -1,0 +1,21 @@
+---
+import type { Quarantine } from "../lib/data";
+
+interface Props {
+  quarantine: Quarantine;
+}
+
+const { quarantine } = Astro.props;
+---
+
+<aside
+  class:list={["quarantine", `quarantine-${quarantine.domain}`]}
+  aria-labelledby="quarantine-heading"
+>
+  <div class="quarantine-inner">
+    <h2 id="quarantine-heading">
+      Quarantined: Domain {quarantine.domain} narrative, not a finding
+    </h2>
+    <p><strong>{quarantine.label}.</strong> {quarantine.text}</p>
+  </div>
+</aside>

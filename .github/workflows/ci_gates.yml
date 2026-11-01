@@ -1,0 +1,39 @@
+name: CI gates
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  public-site:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web_public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web_public/package-lock.json
+      - run: npm ci
+      - name: Ban hardcoded colors outside tokens.css
+        run: npm run lint:css
+      - name: Type-check Astro
+        run: npm run check
+      - name: Build with published data only
+        run: npm run build
+      - name: Build with sample data for route coverage
+        run: npm run build:sample
+      - name: Enforce the 80 KB page budget and no third-party assets
+        run: npm run budget
+      - name: Run pa11y-ci across all routes
+        run: npm run a11y
+        env:
+          # npm no longer runs Puppeteer's download script, so use the runner's Chrome.
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
