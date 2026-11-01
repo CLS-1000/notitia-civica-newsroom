@@ -49,6 +49,8 @@ from spec1_bridge.proc_track_importer import (
     ProcTrackError,
     import_proc_track,
 )
+from spec1_bridge.spec1_importer import SUBJECT_DOMAIN as SPEC1_DOMAIN
+from spec1_bridge.spec1_importer import import_spec1_records
 
 logger = logging.getLogger(__name__)
 
@@ -381,6 +383,21 @@ def run_pdx1(
     return triage_packets(imported.packets, "oregon_civic", conn, enricher)
 
 
+def run_spec1(
+    store_path: str, verdicts_path: str | None, conn: Connection, enricher: OllamaEnricher
+) -> TriageReport:
+    """Import spec-1's intelligence store and triage its model-verified leads."""
+    imported = import_spec1_records(
+        store_path,
+        lambda: allocate_source_id(conn),
+        verdicts_path=verdicts_path,
+        is_known=_known_lead(conn),
+    )
+    for error in imported.errors:
+        logger.warning("spec-1: %s", error)
+    return triage_packets(imported.packets, SPEC1_DOMAIN, conn, enricher)
+
+
 def run_proc_track(
     proc_track_path: str,
     session: str,
@@ -427,6 +444,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Lowest pdx-1i priority band to import (default: STANDARD)",
     )
     parser.add_argument(
+        "--spec1-jsonl",
+        default=os.environ.get("SPEC1_STORE_PATH"),
+        help="Path to spec-1's spec1_intelligence.jsonl; skipped without one",
+    )
+    parser.add_argument(
+        "--spec1-verdicts",
+        default=os.environ.get("SPEC1_VERDICTS_PATH"),
+        help="Path to spec-1's verdicts.jsonl; records judged 'incorrect' are left out",
+    )
+    parser.add_argument(
         "--proc-track-path",
         default=os.environ.get("PROC_TRACK_PATH"),
         help="Path to a CLS-1000/proc_track checkout; skipped without one",
@@ -466,6 +493,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.pdx1_store:
             reports["pdx1_importer"] = run_pdx1(
                 args.pdx1_store, args.pdx1_min_priority, conn, enricher
+            )
+        if args.spec1_jsonl:
+            reports["spec1_importer"] = run_spec1(
+                args.spec1_jsonl, args.spec1_verdicts, conn, enricher
             )
         if args.proc_track_path:
             try:
