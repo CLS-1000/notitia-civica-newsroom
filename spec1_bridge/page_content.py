@@ -45,7 +45,16 @@ SKIPPED_TAGS: Final = frozenset(
     }
 )
 SKIPPED_ROLES: Final = frozenset(
-    {"navigation", "banner", "contentinfo", "search", "menu", "menubar", "dialog", "alert"}
+    {
+        "navigation",
+        "banner",
+        "contentinfo",
+        "search",
+        "menu",
+        "menubar",
+        "dialog",
+        "alert",
+    }
 )
 VOID_TAGS: Final = frozenset(
     {
@@ -71,7 +80,9 @@ FORM_CONTROLS: Final = frozenset({"input", "select", "textarea"})
 HEADING_TAGS: Final = frozenset({"h1", "h2"})
 # <main> is used when it holds at least this share of the body's visible text.
 MAIN_SHARE: Final = 0.4
-_HIDDEN_INPUT: Final = re.compile(r"^(hidden|submit|button|image|reset)$", re.IGNORECASE)
+_HIDDEN_INPUT: Final = re.compile(
+    r"^(hidden|submit|button|image|reset)$", re.IGNORECASE
+)
 
 
 @dataclass(slots=True)
@@ -255,7 +266,9 @@ def read_main_content(html: str) -> PageContent:
 
 # Notices a site serves, with HTTP 200, in place of the page that was asked for.
 ERROR_NOTICES: Final = (
-    re.compile(r"\b(page|file|document|record|measure|item|resource)s? (was |were )?not found\b"),
+    re.compile(
+        r"\b(page|file|document|record|measure|item|resource)s? (was |were )?not found\b"
+    ),
     re.compile(r"^(error )?404\b|\b404\b.*\bnot found\b|\bnot found\b.*\b404\b"),
     re.compile(r"\b(cannot|can't|unable to) display\b"),
     re.compile(r"\b(has|have) not (yet )?been (released|published)\b"),

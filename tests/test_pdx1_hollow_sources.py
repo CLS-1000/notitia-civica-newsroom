@@ -44,7 +44,9 @@ from spec1_bridge.pdx1_importer import (
 FIXTURES = Path(__file__).parent / "fixtures" / "pdx1_hollow"
 HTML = "text/html; charset=utf-8"
 
-ORESTAR = "https://secure.sos.state.or.us/orestar/gotoPublicTransactionDetail.do?tranId="
+ORESTAR = (
+    "https://secure.sos.state.or.us/orestar/gotoPublicTransactionDetail.do?tranId="
+)
 OLIS = "https://olis.oregonlegislature.gov/liz/2026R1/Measures/Overview/"
 SEI_LANDING = "https://www.oregon.gov/ogec/Pages/sei-filings.aspx"
 PDC_LANDING = "https://www.pdc.wa.gov/browse/campaign-explorer"
@@ -181,7 +183,9 @@ def _record(record_id: str, url: str | None = None, **overrides: Any) -> dict[st
 
 
 def _store(path: Path, records: list[dict[str, Any]]) -> Path:
-    path.write_text("\n".join(json.dumps(item) for item in records) + "\n", encoding="utf-8")
+    path.write_text(
+        "\n".join(json.dumps(item) for item in records) + "\n", encoding="utf-8"
+    )
     return path
 
 
@@ -190,13 +194,17 @@ def _allocator() -> Callable[[], str]:
     return lambda: f"S-{next(counter)}"
 
 
-def _transport(pages: dict[str, bytes], requests: list[str] | None = None) -> httpx.MockTransport:
+def _transport(
+    pages: dict[str, bytes], requests: list[str] | None = None
+) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if requests is not None:
             requests.append(url)
         if url not in pages:
-            return httpx.Response(404, headers={"content-type": "text/plain"}, content=b"no")
+            return httpx.Response(
+                404, headers={"content-type": "text/plain"}, content=b"no"
+            )
         return httpx.Response(200, headers={"content-type": HTML}, content=pages[url])
 
     return httpx.MockTransport(handler)
@@ -218,7 +226,9 @@ def test_each_audited_hollow_page_is_rejected_by_its_content(record_id: str) -> 
     name = AUDITED[record_id][4]
     record = parse_record(json.dumps(_record(record_id)))
     page = read_main_content(_text(name))
-    reason = hollow_source_reason(record, _content_only_url(record_id), _text(name), page)
+    reason = hollow_source_reason(
+        record, _content_only_url(record_id), _text(name), page
+    )
     assert reason is not None
 
 
@@ -240,7 +250,9 @@ def test_pdc_landing_page_is_rejected_for_not_stating_the_receipt() -> None:
     page = read_main_content(_text("pdc_campaign_explorer_landing.html"))
     for record_id in ("rec_16a2e13c4601b8e5", "rec_57e5434062d3e34a"):
         record = parse_record(json.dumps(_record(record_id)))
-        reason = hollow_source_reason(record, _content_only_url(record_id), page.text, page)
+        reason = hollow_source_reason(
+            record, _content_only_url(record_id), page.text, page
+        )
         assert reason == "does not state the record's identifier"
 
 
@@ -248,22 +260,39 @@ def test_substantive_hb4092_page_passes() -> None:
     page = read_main_content(_text("olis_hb4092_overview.html"))
     assert hollow_page_reason(page) is None
     record = parse_record(json.dumps(_record(SUBSTANTIVE)))
-    assert hollow_source_reason(record, OLIS + "HB4092", _text("olis_hb4092_overview.html"), page) is None
-    assert hollow_source_reason(
-        record, _content_only_url(SUBSTANTIVE), _text("olis_hb4092_overview.html"), page
-    ) is None
+    assert (
+        hollow_source_reason(
+            record, OLIS + "HB4092", _text("olis_hb4092_overview.html"), page
+        )
+        is None
+    )
+    assert (
+        hollow_source_reason(
+            record,
+            _content_only_url(SUBSTANTIVE),
+            _text("olis_hb4092_overview.html"),
+            page,
+        )
+        is None
+    )
 
 
 def _audited_pages(url_for: Callable[[str], str]) -> dict[str, bytes]:
-    return {url_for(record_id): _fixture(AUDITED[record_id][4]) for record_id in AUDITED}
+    return {
+        url_for(record_id): _fixture(AUDITED[record_id][4]) for record_id in AUDITED
+    }
 
 
-@pytest.mark.parametrize("by_content", [False, True], ids=["real_urls", "content_only_urls"])
+@pytest.mark.parametrize(
+    "by_content", [False, True], ids=["real_urls", "content_only_urls"]
+)
 def test_audited_run_replay_keeps_only_hb4092(tmp_path: Path, by_content: bool) -> None:
     def url_for(record_id: str) -> str:
         return _content_only_url(record_id) if by_content else AUDITED[record_id][3]
 
-    store = _store(tmp_path / "s.jsonl", [_record(rid, url=url_for(rid)) for rid in AUDITED])
+    store = _store(
+        tmp_path / "s.jsonl", [_record(rid, url=url_for(rid)) for rid in AUDITED]
+    )
     requests: list[str] = []
     result = import_pdx1_signals(
         store,
@@ -302,14 +331,21 @@ def test_main_is_used_only_when_it_holds_the_content() -> None:
     )
     assert wrapped.text.startswith("Record text.")
     title_only = read_main_content(
-        "<body><main><h1>HB 1</h1></main><div><p>" + "Record text. " * 20 + "</p></div></body>"
+        "<body><main><h1>HB 1</h1></main><div><p>"
+        + "Record text. " * 20
+        + "</p></div></body>"
     )
     assert "Record text." in title_only.text
 
 
 def test_a_long_record_that_mentions_does_not_exist_is_not_a_notice() -> None:
-    body = "The committee said the account does not exist in that name. " + "Filed text. " * 150
-    page = read_main_content(f"<html><body><h1>Transaction 4417392</h1><p>{body}</p></body></html>")
+    body = (
+        "The committee said the account does not exist in that name. "
+        + "Filed text. " * 150
+    )
+    page = read_main_content(
+        f"<html><body><h1>Transaction 4417392</h1><p>{body}</p></body></html>"
+    )
     assert error_notice(page) is None
     assert hollow_page_reason(page) is None
 
@@ -321,7 +357,9 @@ def test_a_long_record_that_mentions_does_not_exist_is_not_a_notice() -> None:
         "<html><head><title>Page Not Found</title></head><body><p>Try again later please.</p></body></html>",
         "<html><body><p>No records found for your search terms.</p></body></html>",
         "<html><body><script>document.write('a b c d e f')</script></body></html>",
-        "<html><body>" + "<a href='/x'>Candidates and committees</a> " * 20 + "</body></html>",
+        "<html><body>"
+        + "<a href='/x'>Candidates and committees</a> " * 20
+        + "</body></html>",
     ],
     ids=["404_heading", "not_found_title", "no_records", "script_only", "link_list"],
 )
@@ -355,7 +393,12 @@ def test_record_identifiers() -> None:
 def test_json_evidence_rows_skip_the_page_checks() -> None:
     record = parse_record(json.dumps(_record("rec_16a2e13c4601b8e5")))
     row = '[{"id":"21807083","amount":"96.62"}]'
-    assert hollow_source_reason(record, "https://data.wa.gov/resource/kv7h-kjye.json", row, None) is None
+    assert (
+        hollow_source_reason(
+            record, "https://data.wa.gov/resource/kv7h-kjye.json", row, None
+        )
+        is None
+    )
     assert pdx1_importer.is_empty_answer("[]")
 
 
@@ -390,7 +433,9 @@ def test_hb4092_excerpt_is_body_text_not_head_boilerplate(tmp_path: Path) -> Non
     assert excerpt_is_verbatim(excerpt, text)
 
 
-def test_hb4092_excerpt_passes_the_grounding_gate_as_it_reads_sources(tmp_path: Path) -> None:
+def test_hb4092_excerpt_passes_the_grounding_gate_as_it_reads_sources(
+    tmp_path: Path,
+) -> None:
     """verify_grounding compares quotes against source_registry.verbatim_text,
     which _register_artifact fills from read_artifact_text of the sealed blob."""
     packet, text = _hb4092_lead(tmp_path)
@@ -417,7 +462,10 @@ def test_excerpt_skips_head_script_style_nav_and_links() -> None:
     record = parse_record(json.dumps(_record("rec_933cef894bc2c523", pattern=pattern)))
     page = read_main_content(html)
     excerpt = pdx1_importer.pick_excerpt(record, html, page)
-    assert excerpt == "Contribution of $12,500.00 received on 2026-05-27, transaction 4417392, cash."
+    assert (
+        excerpt
+        == "Contribution of $12,500.00 received on 2026-05-27, transaction 4417392, cash."
+    )
     assert excerpt_is_verbatim(excerpt, html)
 
 
@@ -425,12 +473,17 @@ def test_excerpt_prefers_the_pattern_only_when_the_body_states_it() -> None:
     pattern = "Contribution $25,000 to Committee X"
     record = parse_record(json.dumps(_record("rec_933cef894bc2c523", pattern=pattern)))
     in_body = f"<html><body><p>{pattern}</p></body></html>"
-    assert pdx1_importer.pick_excerpt(record, in_body, read_main_content(in_body)) == pattern
+    assert (
+        pdx1_importer.pick_excerpt(record, in_body, read_main_content(in_body))
+        == pattern
+    )
     head_only = (
         f"<html><head><meta name='d' content='{pattern}'></head>"
         "<body><p>The committee filed its report late in the cycle this year.</p></body></html>"
     )
-    excerpt = pdx1_importer.pick_excerpt(record, head_only, read_main_content(head_only))
+    excerpt = pdx1_importer.pick_excerpt(
+        record, head_only, read_main_content(head_only)
+    )
     assert excerpt == "The committee filed its report late in the cycle this year."
 
 
@@ -468,7 +521,9 @@ def test_hollow_audited_pages_can_never_be_tier_1(record_id: str) -> None:
     _source_id, _type, _pattern, url, name, _sha = AUDITED[record_id]
     assert pdx1_importer.classify_source_tier(url) == "tier_1_primary"  # the host alone
     record = parse_record(json.dumps(_record(record_id)))
-    hollow = hollow_source_reason(record, url, _text(name), read_main_content(_text(name)))
+    hollow = hollow_source_reason(
+        record, url, _text(name), read_main_content(_text(name))
+    )
     assert pdx1_importer.assign_source_tier(url, url, hollow) == "tier_4_unverified"
 
 
@@ -479,8 +534,14 @@ def test_substantive_primary_page_keeps_tier_1() -> None:
 
 def test_redirect_off_a_primary_host_takes_the_lower_tier() -> None:
     elsewhere = "https://www.oregonlive.com/politics/story.html"
-    assert pdx1_importer.assign_source_tier(OLIS + "HB4092", elsewhere, None) == "tier_3_secondary"
-    assert pdx1_importer.assign_source_tier(elsewhere, OLIS + "HB4092", None) == "tier_3_secondary"
+    assert (
+        pdx1_importer.assign_source_tier(OLIS + "HB4092", elsewhere, None)
+        == "tier_3_secondary"
+    )
+    assert (
+        pdx1_importer.assign_source_tier(elsewhere, OLIS + "HB4092", None)
+        == "tier_3_secondary"
+    )
 
 
 def test_blobs_are_sealed_unverified_and_artifacts_tiered_after_checks(

@@ -117,7 +117,9 @@ SEARCH_FORM_MARKERS: Final = {
 # Identifiers a pdx-1i pattern names its record by: ORE-2026-4417392 (ORESTAR),
 # WA-2026-778341 (WA PDC), SEI-2026-00871 (OGEC), and Oregon measure numbers.
 RECORD_NUMBER: Final = re.compile(r"\b([A-Z]{2,5})-(\d{4})-(\d{3,})\b")
-MEASURE_NUMBER: Final = re.compile(r"\b(HB|SB|HJR|SJR|HCR|SCR|HJM|SJM|HM|SM)\s?(\d{1,4})\b")
+MEASURE_NUMBER: Final = re.compile(
+    r"\b(HB|SB|HJR|SJR|HCR|SCR|HJM|SJM|HM|SM)\s?(\d{1,4})\b"
+)
 MEASURE_NAMES: Final = {"HB": "House Bill", "SB": "Senate Bill"}
 
 # The tier of a source whose content has not passed the hollow-source checks.
@@ -235,10 +237,14 @@ def record_identifiers(pattern: str) -> list[re.Pattern[str]]:
     found: list[re.Pattern[str]] = []
     for prefix, year, number in RECORD_NUMBER.findall(pattern):
         found.append(
-            re.compile(rf"\b{prefix}-{year}-{number}\b|(?<![\d-]){number}(?!\d)", re.IGNORECASE)
+            re.compile(
+                rf"\b{prefix}-{year}-{number}\b|(?<![\d-]){number}(?!\d)", re.IGNORECASE
+            )
         )
     for prefix, number in MEASURE_NUMBER.findall(pattern):
-        names = "|".join(re.escape(name) for name in (prefix, MEASURE_NAMES.get(prefix)) if name)
+        names = "|".join(
+            re.escape(name) for name in (prefix, MEASURE_NAMES.get(prefix)) if name
+        )
         found.append(re.compile(rf"\b(?:{names})\s?{number}\b", re.IGNORECASE))
     return found
 
