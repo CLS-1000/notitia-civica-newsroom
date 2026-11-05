@@ -120,6 +120,9 @@ RECORD_NUMBER: Final = re.compile(r"\b([A-Z]{2,5})-(\d{4})-(\d{3,})\b")
 MEASURE_NUMBER: Final = re.compile(r"\b(HB|SB|HJR|SJR|HCR|SCR|HJM|SJM|HM|SM)\s?(\d{1,4})\b")
 MEASURE_NAMES: Final = {"HB": "House Bill", "SB": "Senate Bill"}
 
+# The tier of a source whose content has not passed the hollow-source checks.
+UNCHECKED_TIER: Final = "tier_4_unverified"
+
 # Hosts that publish filed public records. Anything else is secondary.
 PRIMARY_HOSTS: Final = (
     "secure.sos.state.or.us",  # ORESTAR
@@ -178,12 +181,30 @@ def _host(url: str) -> str:
 
 
 def classify_source_tier(url: str) -> str:
-    """Tier of the source document, by the host that published it."""
+    """The highest tier a document from this host can have.
+
+    A ceiling, not a grade: pdx-1i sources take their tier from
+    assign_source_tier, which also needs the content checks to pass.
+    """
     host = _host(url)
     for primary in PRIMARY_HOSTS:
         if host == primary or host.endswith("." + primary):
             return "tier_1_primary"
     return "tier_3_secondary"
+
+
+def assign_source_tier(source_url: str, final_url: str, hollow: str | None) -> str:
+    """The tier a sealed pdx-1i source earns: its host's, only if its content passed.
+
+    A hollow source (hollow is hollow_source_reason's answer) is
+    tier_4_unverified whatever its host, so an error page on a primary host can
+    never reach triage as tier_1_primary even if it were not skipped. A fetch
+    that ended on another host takes the lower of the two hosts' tiers.
+    """
+    if hollow is not None:
+        return UNCHECKED_TIER
+    asked, served = classify_source_tier(source_url), classify_source_tier(final_url)
+    return asked if asked == served else "tier_3_secondary"
 
 
 def is_landing_page(url: str) -> bool:
@@ -476,12 +497,13 @@ def import_pdx1_signals(
                 continue
             seen.add(lead_id)
 
-            tier = classify_source_tier(source_url)
+            # Nothing about the content is known yet, so the blob is sealed as
+            # unverified; the artifact's tier is decided after the checks.
             try:
                 receipt = fetch_and_seal_source(
                     source_url,
                     allocate_source_id(),
-                    tier,
+                    UNCHECKED_TIER,
                     archive_dir=archive_dir,
                     transport=transport,
                 )
@@ -506,6 +528,7 @@ def import_pdx1_signals(
                 else None
             )
             hollow = hollow_source_reason(record, final_url, text, page)
+            tier = assign_source_tier(source_url, final_url, hollow)
             if hollow is not None:
                 result.skipped["hollow_source"] += 1
                 result.errors.append(f"{record.record_id}: {final_url} {hollow}")

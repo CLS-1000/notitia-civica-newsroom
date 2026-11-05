@@ -25,6 +25,7 @@ import httpx
 import pytest
 
 from newsroom.dors_venabili.gatekeeper import verify_grounding
+from newsroom.harlan_eternity.custody import SOURCE_TIERS, fetch_and_seal_source
 from spec1_bridge import mycroft_triage, pdx1_importer
 from spec1_bridge.adapters.base_lazlong import excerpt_is_verbatim, read_artifact_text
 from spec1_bridge.page_content import (
@@ -457,3 +458,43 @@ def test_non_html_excerpt_is_unchanged() -> None:
     record = parse_record(json.dumps(_record("rec_16a2e13c4601b8e5", pattern="x")))
     row = '[{"id":"21807083","amount":"96.62"}]'
     assert pdx1_importer.pick_excerpt(record, row, None) == row
+
+
+# Fix 3: the tier depends on the content checks, not the URL alone. ---------
+
+
+@pytest.mark.parametrize("record_id", HOLLOW)
+def test_hollow_audited_pages_can_never_be_tier_1(record_id: str) -> None:
+    _source_id, _type, _pattern, url, name, _sha = AUDITED[record_id]
+    assert pdx1_importer.classify_source_tier(url) == "tier_1_primary"  # the host alone
+    record = parse_record(json.dumps(_record(record_id)))
+    hollow = hollow_source_reason(record, url, _text(name), read_main_content(_text(name)))
+    assert pdx1_importer.assign_source_tier(url, url, hollow) == "tier_4_unverified"
+
+
+def test_substantive_primary_page_keeps_tier_1() -> None:
+    url = OLIS + "HB4092"
+    assert pdx1_importer.assign_source_tier(url, url, None) == "tier_1_primary"
+
+
+def test_redirect_off_a_primary_host_takes_the_lower_tier() -> None:
+    elsewhere = "https://www.oregonlive.com/politics/story.html"
+    assert pdx1_importer.assign_source_tier(OLIS + "HB4092", elsewhere, None) == "tier_3_secondary"
+    assert pdx1_importer.assign_source_tier(elsewhere, OLIS + "HB4092", None) == "tier_3_secondary"
+
+
+def test_blobs_are_sealed_unverified_and_artifacts_tiered_after_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sealed_tiers: list[str] = []
+    real_seal = fetch_and_seal_source
+
+    def recording_seal(url: str, source_id: str, tier: str, **kwargs: Any) -> Any:
+        sealed_tiers.append(tier)
+        return real_seal(url, source_id, tier, **kwargs)
+
+    monkeypatch.setattr(pdx1_importer, "fetch_and_seal_source", recording_seal)
+    packet, _ = _hb4092_lead(tmp_path)
+    assert sealed_tiers == ["tier_4_unverified"]
+    assert packet.source_artifacts[0].tier == "tier_1_primary"
+    assert all(tier in SOURCE_TIERS for tier in sealed_tiers)
