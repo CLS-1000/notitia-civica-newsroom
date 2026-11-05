@@ -24,7 +24,9 @@ from typing import Any
 import httpx
 import pytest
 
-from spec1_bridge import pdx1_importer
+from newsroom.dors_venabili.gatekeeper import verify_grounding
+from spec1_bridge import mycroft_triage, pdx1_importer
+from spec1_bridge.adapters.base_lazlong import excerpt_is_verbatim, read_artifact_text
 from spec1_bridge.page_content import (
     error_notice,
     hollow_page_reason,
@@ -354,3 +356,104 @@ def test_json_evidence_rows_skip_the_page_checks() -> None:
     row = '[{"id":"21807083","amount":"96.62"}]'
     assert hollow_source_reason(record, "https://data.wa.gov/resource/kv7h-kjye.json", row, None) is None
     assert pdx1_importer.is_empty_answer("[]")
+
+
+# Fix 2: the excerpt comes from the page's body, and stays groundable. -------
+
+
+def _hb4092_lead(tmp_path: Path) -> tuple[Any, str]:
+    store = _store(tmp_path / "s.jsonl", [_record(SUBSTANTIVE)])
+    result = import_pdx1_signals(
+        store,
+        _allocator(),
+        archive_dir=tmp_path / "archive",
+        transport=_transport({OLIS + "HB4092": _fixture("olis_hb4092_overview.html")}),
+    )
+    (packet,) = result.packets
+    artifact = packet.source_artifacts[0]
+    raw = Path(artifact.raw_payload_path).read_bytes()
+    text = read_artifact_text(raw, artifact.metadata["content_type"])
+    assert text is not None
+    return packet, text
+
+
+def test_hb4092_excerpt_is_body_text_not_head_boilerplate(tmp_path: Path) -> None:
+    packet, text = _hb4092_lead(tmp_path)
+    (excerpt,) = packet.verbatim_excerpts.values()
+
+    assert packet.evidence_bar_passed
+    assert "<" not in excerpt and "DOCTYPE" not in excerpt
+    assert excerpt.startswith("Prohibits a retailer from knowingly selling")
+    assert len(excerpt) <= pdx1_importer.EXCERPT_CHARS
+    assert excerpt in read_main_content(text).text
+    assert excerpt_is_verbatim(excerpt, text)
+
+
+def test_hb4092_excerpt_passes_the_grounding_gate_as_it_reads_sources(tmp_path: Path) -> None:
+    """verify_grounding compares quotes against source_registry.verbatim_text,
+    which _register_artifact fills from read_artifact_text of the sealed blob."""
+    packet, text = _hb4092_lead(tmp_path)
+    ((source_id, excerpt),) = packet.verbatim_excerpts.items()
+    body = f'The measure\'s summary reads "{excerpt}" [{source_id}].'
+    report = verify_grounding(body, {source_id: text.replace("\x00", "")})
+    assert report["passed"], report["issues"]
+    assert mycroft_triage._excerpt_problem(packet) is None
+
+
+def test_excerpt_skips_head_script_style_nav_and_links() -> None:
+    pattern = "Transaction 4417392 records a contribution of $12,500.00 from a PAC"
+    html = (
+        "<html><head><title>" + pattern + "</title>"
+        "<meta name='description' content='" + pattern + "'>"
+        "<script>var note = 'this script text is long enough to be a sentence';</script>"
+        "<style>.x { content: 'this style text is long enough to be a sentence too' }</style>"
+        "</head><body><nav><p>Home and every menu item a long sentence of navigation text</p></nav>"
+        "<p><a href='/a'>A link whose text is long enough to read as a sentence</a></p>"
+        "<p>Short label</p>"
+        "<p>Contribution of $12,500.00 received on 2026-05-27, transaction 4417392, cash.</p>"
+        "</body></html>"
+    )
+    record = parse_record(json.dumps(_record("rec_933cef894bc2c523", pattern=pattern)))
+    page = read_main_content(html)
+    excerpt = pdx1_importer.pick_excerpt(record, html, page)
+    assert excerpt == "Contribution of $12,500.00 received on 2026-05-27, transaction 4417392, cash."
+    assert excerpt_is_verbatim(excerpt, html)
+
+
+def test_excerpt_prefers_the_pattern_only_when_the_body_states_it() -> None:
+    pattern = "Contribution $25,000 to Committee X"
+    record = parse_record(json.dumps(_record("rec_933cef894bc2c523", pattern=pattern)))
+    in_body = f"<html><body><p>{pattern}</p></body></html>"
+    assert pdx1_importer.pick_excerpt(record, in_body, read_main_content(in_body)) == pattern
+    head_only = (
+        f"<html><head><meta name='d' content='{pattern}'></head>"
+        "<body><p>The committee filed its report late in the cycle this year.</p></body></html>"
+    )
+    excerpt = pdx1_importer.pick_excerpt(record, head_only, read_main_content(head_only))
+    assert excerpt == "The committee filed its report late in the cycle this year."
+
+
+def test_excerpt_skips_character_references_and_stays_verbatim() -> None:
+    html = (
+        "<html><body><p>The commissioner&#39;s statement was filed on time and in full.</p>"
+        "<p>Filed amount of $9,000 for the committee in the 2026 cycle.</p></body></html>"
+    )
+    record = parse_record(json.dumps(_record("rec_933cef894bc2c523", pattern="x")))
+    excerpt = pdx1_importer.pick_excerpt(record, html, read_main_content(html))
+    assert "&#39;" not in excerpt
+    assert excerpt_is_verbatim(excerpt, html)
+
+
+def test_long_runs_are_clipped_at_a_word_boundary() -> None:
+    html = "<html><body><p>" + "word " * 200 + "</p></body></html>"
+    record = parse_record(json.dumps(_record("rec_933cef894bc2c523", pattern="x")))
+    excerpt = pdx1_importer.pick_excerpt(record, html, read_main_content(html))
+    assert 0 < len(excerpt) <= pdx1_importer.EXCERPT_CHARS
+    assert excerpt.endswith("word")
+    assert excerpt_is_verbatim(excerpt, html)
+
+
+def test_non_html_excerpt_is_unchanged() -> None:
+    record = parse_record(json.dumps(_record("rec_16a2e13c4601b8e5", pattern="x")))
+    row = '[{"id":"21807083","amount":"96.62"}]'
+    assert pdx1_importer.pick_excerpt(record, row, None) == row

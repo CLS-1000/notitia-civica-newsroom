@@ -96,6 +96,8 @@ POINTS_PER_SIGMA: Final = 20.0
 RECORD_TIERS: Final = frozenset({"HARD_RECORD", "REPORTED", "INFERRED"})
 PUBLIC_ORIGINS: Final = frozenset({"live", "cache"})
 EXCERPT_CHARS: Final = 300
+# A text run this long reads as a sentence of the record, not a label or a menu.
+MIN_EXCERPT_WORDS: Final = 8
 
 # Pages that list or search filings rather than state one. Seen on Kali
 # 2026-11-01: ORESTAR transaction links without a session land on the search
@@ -327,15 +329,49 @@ def lead_id_for(record: Pdx1Record) -> str:
     return str(uuid.uuid5(PDX1_NAMESPACE, record.record_id))
 
 
-def pick_excerpt(record: Pdx1Record, text: str) -> str:
-    """The record's own pattern text if the source states it, else the source's opening.
+def _clip(text: str) -> str:
+    """At most EXCERPT_CHARS, cut at a word boundary. Still a span of text."""
+    if len(text) <= EXCERPT_CHARS:
+        return text
+    cut = text[:EXCERPT_CHARS]
+    return (cut.rsplit(" ", 1)[0] if " " in cut else cut).strip()
 
-    Either way the excerpt is a span of the sealed source, so it passes the
-    corroboration gate's verbatim check honestly.
+
+def pick_excerpt(record: Pdx1Record, text: str, page: PageContent | None = None) -> str:
+    """The record's own pattern text if the source states it, else a span of its body.
+
+    For an HTML page (page is its visible main content) the excerpt is one raw
+    text run of that content: never <head>, <script>, <style>, nav, link or
+    form-control text. The first run long enough to read as a sentence is used,
+    preferring one that names the record's identifier, else the longest run. A run holds no markup
+    or character references, so it is a verbatim span of the sealed payload,
+    which is what the corroboration gate (excerpt_is_verbatim on the payload)
+    and the grounding gate (normalize_text on source_registry.verbatim_text)
+    compare against. Returns "" if no span qualifies; the lead then fails the
+    evidence bar rather than carry boilerplate.
+
+    Other payloads (JSON rows, PDF text, plain text) have no boilerplate, so
+    their excerpt is the opening of the text, as before.
     """
-    if record.pattern and excerpt_is_verbatim(record.pattern, text):
+    pattern_stated = bool(record.pattern) and excerpt_is_verbatim(record.pattern, text)
+    if page is None:
+        if pattern_stated:
+            return record.pattern
+        return normalize_whitespace(text)[:EXCERPT_CHARS].strip()
+
+    if pattern_stated and normalize_whitespace(record.pattern) in page.text:
         return record.pattern
-    return normalize_whitespace(text)[:EXCERPT_CHARS].strip()
+    sentences = [run for run in page.text_runs if len(run.split()) >= MIN_EXCERPT_WORDS]
+    wanted = record_identifiers(record.pattern)
+    naming = [run for run in sentences if any(item.search(run) for item in wanted)]
+    candidates = naming or sentences
+    if not candidates:
+        # A short record page: its longest body run, still never boilerplate.
+        candidates = sorted(page.text_runs, key=len, reverse=True)[:1]
+    if not candidates:
+        return ""
+    excerpt = _clip(candidates[0])
+    return excerpt if excerpt_is_verbatim(excerpt, text) else ""
 
 
 def build_prompt(record: Pdx1Record, artifact: SourceArtifact) -> str:
@@ -497,7 +533,7 @@ def import_pdx1_signals(
                     ),
                 },
             )
-            excerpt = pick_excerpt(record, text)
+            excerpt = pick_excerpt(record, text, page)
             result.packets.append(
                 Spec1LeadPacket(
                     lead_id=lead_id,
