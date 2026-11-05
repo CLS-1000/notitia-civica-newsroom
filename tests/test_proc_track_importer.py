@@ -34,7 +34,9 @@ from spec1_bridge.proc_track_importer import (
     parse_action_date,
 )
 
-FIXTURE_HARNESS = Path(__file__).parent / "fixtures" / "proc_track" / "replay_harness.py"
+FIXTURE_HARNESS = (
+    Path(__file__).parent / "fixtures" / "proc_track" / "replay_harness.py"
+)
 SESSION = "2026R1"
 
 
@@ -46,7 +48,12 @@ def _stamp(days_ago: float, hour: int = 10) -> str:
 
 
 def _rows(
-    prefix: str, number: int, actions: list[str], *, start_id: int, session: str = SESSION
+    prefix: str,
+    number: int,
+    actions: list[str],
+    *,
+    start_id: int,
+    session: str = SESSION,
 ) -> list[dict[str, Any]]:
     return [
         {
@@ -67,13 +74,31 @@ def _session_rows() -> list[dict[str, Any]]:
     intro, passed = "Introduction and first reading.", "Third reading. Passed."
     return [
         *_rows("SB", 1, [intro, passed, "Governor vetoed."], start_id=100),
-        *_rows("SB", 2, [intro, passed, "Governor vetoed.",
-                         "Veto overridden by two-thirds vote."], start_id=200),
-        *_rows("HB", 3, [intro, passed, "Governor signed with line-item veto."], start_id=300),
-        *_rows("HB", 4, [intro, passed, "Filed without Governor's signature."], start_id=400),
+        *_rows(
+            "SB",
+            2,
+            [intro, passed, "Governor vetoed.", "Veto overridden by two-thirds vote."],
+            start_id=200,
+        ),
+        *_rows(
+            "HB",
+            3,
+            [intro, passed, "Governor signed with line-item veto."],
+            start_id=300,
+        ),
+        *_rows(
+            "HB",
+            4,
+            [intro, passed, "Filed without Governor's signature."],
+            start_id=400,
+        ),
         *_rows("HB", 5, [intro, passed, "Governor signed."], start_id=500),
-        *_rows("HB", 6, [intro, "Rule that proc_track has no mapping for."], start_id=600),
-        *_rows("SB", 7, [intro, passed, "Governor vetoed."], start_id=700, session="2025R1"),
+        *_rows(
+            "HB", 6, [intro, "Rule that proc_track has no mapping for."], start_id=600
+        ),
+        *_rows(
+            "SB", 7, [intro, passed, "Governor vetoed."], start_id=700, session="2025R1"
+        ),
     ]
 
 
@@ -82,7 +107,9 @@ def proc_track(tmp_path: Path) -> Path:
     root = tmp_path / "proc_track"
     (root / "cache").mkdir(parents=True)
     shutil.copy(FIXTURE_HARNESS, root / "replay_harness.py")
-    (root / "cache" / f"{SESSION}.json").write_text(json.dumps(_session_rows()), encoding="utf-8")
+    (root / "cache" / f"{SESSION}.json").write_text(
+        json.dumps(_session_rows()), encoding="utf-8"
+    )
     return root
 
 
@@ -104,7 +131,9 @@ def test_missing_checkout_and_cache_raise(tmp_path: Path) -> None:
 
 
 def test_notable_outcomes_become_leads(proc_track: Path, tmp_path: Path) -> None:
-    result = import_proc_track(proc_track, SESSION, _allocator(), archive_dir=tmp_path / "a")
+    result = import_proc_track(
+        proc_track, SESSION, _allocator(), archive_dir=tmp_path / "a"
+    )
     leads = _by_measure(result.packets)
 
     assert set(leads) == {"SB1", "SB2", "HB3", "HB4"}
@@ -116,7 +145,9 @@ def test_notable_outcomes_become_leads(proc_track: Path, tmp_path: Path) -> None
     }
     assert leads["SB2"].anomaly_score == 85.0
     assert leads["SB2"].verbatim_excerpts == {
-        leads["SB2"].source_artifacts[0].source_id: "Veto overridden by two-thirds vote."
+        leads["SB2"]
+        .source_artifacts[0]
+        .source_id: "Veto overridden by two-thirds vote."
     }
     assert result.measures_replayed == 6
     assert set(result.halts) == {"HB6"}
@@ -127,8 +158,12 @@ def test_notable_outcomes_become_leads(proc_track: Path, tmp_path: Path) -> None
         assert packet.source_artifacts[0].tier == "tier_1_primary"
 
 
-def test_halted_and_other_session_measures_are_not_leads(proc_track: Path, tmp_path: Path) -> None:
-    result = import_proc_track(proc_track, SESSION, _allocator(), archive_dir=tmp_path / "a")
+def test_halted_and_other_session_measures_are_not_leads(
+    proc_track: Path, tmp_path: Path
+) -> None:
+    result = import_proc_track(
+        proc_track, SESSION, _allocator(), archive_dir=tmp_path / "a"
+    )
     measures = _by_measure(result.packets)
     assert "HB5" not in measures
     assert "HB6" not in measures
@@ -136,8 +171,12 @@ def test_halted_and_other_session_measures_are_not_leads(proc_track: Path, tmp_p
     assert "NO RULE MATCHED" in result.halts["HB6"]
 
 
-def test_sealed_blob_matches_hash_and_holds_the_excerpt(proc_track: Path, tmp_path: Path) -> None:
-    result = import_proc_track(proc_track, SESSION, _allocator(), archive_dir=tmp_path / "a")
+def test_sealed_blob_matches_hash_and_holds_the_excerpt(
+    proc_track: Path, tmp_path: Path
+) -> None:
+    result = import_proc_track(
+        proc_track, SESSION, _allocator(), archive_dir=tmp_path / "a"
+    )
     for packet in result.packets:
         artifact = packet.source_artifacts[0]
         blob = Path(artifact.raw_payload_path)
@@ -152,9 +191,15 @@ def test_sealed_blob_matches_hash_and_holds_the_excerpt(proc_track: Path, tmp_pa
         assert {row["MeasureHistoryId"] for row in rows} <= set(range(100, 500))
 
 
-def test_reimport_is_deterministic_and_skips_known_leads(proc_track: Path, tmp_path: Path) -> None:
-    first = import_proc_track(proc_track, SESSION, _allocator(), archive_dir=tmp_path / "a")
-    second = import_proc_track(proc_track, SESSION, _allocator(), archive_dir=tmp_path / "b")
+def test_reimport_is_deterministic_and_skips_known_leads(
+    proc_track: Path, tmp_path: Path
+) -> None:
+    first = import_proc_track(
+        proc_track, SESSION, _allocator(), archive_dir=tmp_path / "a"
+    )
+    second = import_proc_track(
+        proc_track, SESSION, _allocator(), archive_dir=tmp_path / "b"
+    )
     assert [p.lead_id for p in first.packets] == [p.lead_id for p in second.packets]
     assert [p.source_artifacts[0].sha256_hash for p in first.packets] == [
         p.source_artifacts[0].sha256_hash for p in second.packets
@@ -168,7 +213,11 @@ def test_reimport_is_deterministic_and_skips_known_leads(proc_track: Path, tmp_p
         return "S-1"
 
     third = import_proc_track(
-        proc_track, SESSION, allocate, is_known=known.__contains__, archive_dir=tmp_path / "c"
+        proc_track,
+        SESSION,
+        allocate,
+        is_known=known.__contains__,
+        archive_dir=tmp_path / "c",
     )
     assert third.packets == []
     assert third.skipped_known == 4
@@ -185,13 +234,19 @@ def test_measure_filter(proc_track: Path, tmp_path: Path) -> None:
 
 
 def test_action_date_is_salem_local_time() -> None:
-    assert parse_action_date("2025-06-20T16:11:22") == datetime(2025, 6, 20, 23, 11, 22, tzinfo=UTC)
-    assert parse_action_date("2025-01-13T08:01:32") == datetime(2025, 1, 13, 16, 1, 32, tzinfo=UTC)
+    assert parse_action_date("2025-06-20T16:11:22") == datetime(
+        2025, 6, 20, 23, 11, 22, tzinfo=UTC
+    )
+    assert parse_action_date("2025-01-13T08:01:32") == datetime(
+        2025, 1, 13, 16, 1, 32, tzinfo=UTC
+    )
 
 
 def test_history_url_targets_one_measure() -> None:
     url = history_url("2025R1", "SB", 976)
-    assert url.startswith("https://api.oregonlegislature.gov/odata/ODataService.svc/MeasureHistoryActions?")
+    assert url.startswith(
+        "https://api.oregonlegislature.gov/odata/ODataService.svc/MeasureHistoryActions?"
+    )
     assert "SessionKey%20eq%20%272025R1%27" in url
     assert "MeasureNumber%20eq%20976" in url
 
@@ -242,9 +297,12 @@ def test_cli_proc_track_only_writes_then_dedupes(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(mycroft_triage, "OllamaEnricher", _OfflineEnricher)
     argv = [
-        "--dsn", ledger_dsn,
-        "--proc-track-path", str(proc_track),
-        "--proc-track-session", SESSION,
+        "--dsn",
+        ledger_dsn,
+        "--proc-track-path",
+        str(proc_track),
+        "--proc-track-session",
+        SESSION,
         "--proc-track-only",
     ]
 
@@ -264,12 +322,17 @@ def test_cli_session_falls_back_to_session_key(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(mycroft_triage, "OllamaEnricher", _OfflineEnricher)
-    code, summary = _run_cli([
-        "--dsn", ledger_dsn,
-        "--session-key", SESSION,
-        "--proc-track-path", str(proc_track),
-        "--proc-track-only",
-    ])
+    code, summary = _run_cli(
+        [
+            "--dsn",
+            ledger_dsn,
+            "--session-key",
+            SESSION,
+            "--proc-track-path",
+            str(proc_track),
+            "--proc-track-only",
+        ]
+    )
     assert code == 0
     assert summary["proc_track_importer"]["written"] == 4
 
@@ -287,10 +350,15 @@ def test_cli_rejects_bad_proc_track_arguments(
         mycroft_triage.main(["--dsn", ledger_dsn, "--proc-track-only"])
     assert no_path.value.code == 2
 
-    code, _summary = _run_cli([
-        "--dsn", ledger_dsn,
-        "--proc-track-path", str(tmp_path / "missing"),
-        "--proc-track-session", SESSION,
-        "--proc-track-only",
-    ])
+    code, _summary = _run_cli(
+        [
+            "--dsn",
+            ledger_dsn,
+            "--proc-track-path",
+            str(tmp_path / "missing"),
+            "--proc-track-session",
+            SESSION,
+            "--proc-track-only",
+        ]
+    )
     assert code == 1

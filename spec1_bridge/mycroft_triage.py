@@ -384,7 +384,10 @@ def run_pdx1(
 
 
 def run_spec1(
-    store_path: str, verdicts_path: str | None, conn: Connection, enricher: OllamaEnricher
+    store_path: str,
+    verdicts_path: str | None,
+    conn: Connection,
+    enricher: OllamaEnricher,
 ) -> TriageReport:
     """Import spec-1's intelligence store and triage its model-verified leads."""
     imported = import_spec1_records(

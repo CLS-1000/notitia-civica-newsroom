@@ -72,14 +72,20 @@ NOTABLE_RULES: Final[dict[str, Outcome]] = {
         "veto_override", "Legislature overrode the Governor's veto", 85.0
     ),
     "repass_notwithstanding": Outcome(
-        "veto_override", "Legislature repassed the measure over the Governor's veto", 85.0
+        "veto_override",
+        "Legislature repassed the measure over the Governor's veto",
+        85.0,
     ),
     "governor_vetoed": Outcome("veto", "Vetoed by the Governor", 70.0),
     "line_item_veto": Outcome(
-        "veto", "Governor purported to sign with line-item veto (recorded as a veto)", 70.0
+        "veto",
+        "Governor purported to sign with line-item veto (recorded as a veto)",
+        70.0,
     ),
     "governor_signed_line_item": Outcome(
-        "line_item_veto", "Signed into law with part of it vetoed (line-item veto)", 60.0
+        "line_item_veto",
+        "Signed into law with part of it vetoed (line-item veto)",
+        60.0,
     ),
     "filed_without_signature": Outcome(
         "enacted_without_signature", "Became law without the Governor's signature", 55.0
@@ -168,7 +174,9 @@ def load_session_rows(
     for row in rows:
         if not isinstance(row, dict) or row.get("SessionKey") != session:
             continue
-        by_measure[f"{row.get('MeasurePrefix', '')}{row.get('MeasureNumber', '')}"].append(row)
+        by_measure[
+            f"{row.get('MeasurePrefix', '')}{row.get('MeasureNumber', '')}"
+        ].append(row)
     return dict(by_measure), hashlib.sha256(raw).hexdigest()
 
 
@@ -325,7 +333,8 @@ def import_proc_track(
         captured_at = clock()
         source_id = allocate_source_id()
         evidence_rows = sorted(
-            cached, key=lambda r: (r.get("ActionDate") or "", r.get("MeasureHistoryId") or 0)
+            cached,
+            key=lambda r: (r.get("ActionDate") or "", r.get("MeasureHistoryId") or 0),
         )
         blob_path, digest = seal_rows(
             evidence_rows, source_id, archive_dir=archive_dir, captured_at=captured_at
@@ -335,7 +344,9 @@ def import_proc_track(
             source_id=source_id,
             tier=SOURCE_TIER,
             origin_url=history_url(
-                session, str(cached[0].get("MeasurePrefix", "")), cached[0].get("MeasureNumber")
+                session,
+                str(cached[0].get("MeasurePrefix", "")),
+                cached[0].get("MeasureNumber"),
             ),
             sha256_hash=digest,
             raw_payload_path=str(blob_path),
@@ -362,7 +373,9 @@ def import_proc_track(
                 evidence_bar_passed=bool(excerpt),
                 source_artifacts=[artifact],
                 verbatim_excerpts={source_id: excerpt} if excerpt else {},
-                paste_ready_prompt=build_prompt(session, measure, outcome, row, states, artifact),
+                paste_ready_prompt=build_prompt(
+                    session, measure, outcome, row, states, artifact
+                ),
                 analysis_tier="rule_based",
             )
         )

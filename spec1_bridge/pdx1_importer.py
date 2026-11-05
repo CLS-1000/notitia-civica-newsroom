@@ -164,7 +164,10 @@ def classify_source_tier(url: str) -> str:
 
 def is_landing_page(url: str) -> bool:
     parsed = httpx.URL(url)
-    return ((parsed.host or "").lower(), parsed.path.lower().rstrip("/")) in LANDING_PAGES
+    return (
+        (parsed.host or "").lower(),
+        parsed.path.lower().rstrip("/"),
+    ) in LANDING_PAGES
 
 
 def is_empty_answer(text: str) -> bool:
@@ -207,7 +210,9 @@ def parse_record(line: str) -> Pdx1Record:
     anomaly = raw.get("anomaly")
     sigma: float | None = None
     if anomaly is not None:
-        if not isinstance(anomaly, dict) or not isinstance(anomaly.get("sigma"), int | float):
+        if not isinstance(anomaly, dict) or not isinstance(
+            anomaly.get("sigma"), int | float
+        ):
             raise Pdx1RecordError("anomaly present without a numeric sigma")
         sigma = float(anomaly["sigma"])
 
@@ -229,7 +234,9 @@ def parse_record(line: str) -> Pdx1Record:
         tier=tier,
         sigma=sigma,
         anomaly=anomaly,
-        entity_ids=[str(item) for item in entity_ids] if isinstance(entity_ids, list) else [],
+        entity_ids=[str(item) for item in entity_ids]
+        if isinstance(entity_ids, list)
+        else [],
         url=url if isinstance(url, str) and url else None,
         published_at=published_at,
         origin=raw.get("origin") if isinstance(raw.get("origin"), str) else None,
@@ -268,7 +275,9 @@ def build_prompt(record: Pdx1Record, artifact: SourceArtifact) -> str:
         "pdx-1i outcome / priority": f"{record.outcome or '?'} / {record.priority}",
         "pdx-1i evidence tier": record.tier,
         "Seats / entities": ", ".join(record.entity_ids) or "none",
-        "Anomaly": json.dumps(record.anomaly, sort_keys=True) if record.anomaly else "none",
+        "Anomaly": json.dumps(record.anomaly, sort_keys=True)
+        if record.anomaly
+        else "none",
         "Published": record.published_at.isoformat(),
     }
     return render_prompt(
@@ -350,7 +359,9 @@ def import_pdx1_signals(
                 continue
             if is_landing_page(source_url):
                 result.skipped["hollow_source"] += 1
-                result.errors.append(f"{record.record_id}: {source_url} is a landing page")
+                result.errors.append(
+                    f"{record.record_id}: {source_url} is a landing page"
+                )
                 continue
             lead_id = lead_id_for(record)
             if lead_id in seen or is_known(lead_id):
@@ -369,11 +380,15 @@ def import_pdx1_signals(
                 )
             except (httpx.HTTPError, CustodyError, ValueError, OSError) as error:
                 result.skipped["seal_failed"] += 1
-                result.errors.append(f"{record.record_id}: could not seal {source_url}: {error}")
+                result.errors.append(
+                    f"{record.record_id}: could not seal {source_url}: {error}"
+                )
                 continue
 
             archive_path = Path(receipt["archive_path"])
-            text = read_artifact_text(archive_path.read_bytes(), receipt["content_type"])
+            text = read_artifact_text(
+                archive_path.read_bytes(), receipt["content_type"]
+            )
             if not text or not text.strip():
                 result.skipped["no_source_text"] += 1
                 continue
