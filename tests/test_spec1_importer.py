@@ -45,7 +45,9 @@ GOV_PAGE = (
     "<p>The committee reported the bill with an amendment on October 20.</p></body></html>"
 )
 NEWS_URL = "https://warontherocks.com/cogs-of-war/the-pentagons-ai-edge"
-NEWS_PAGE = "<html><body><p>The Pentagon's AI edge is being distilled away.</p></body></html>"
+NEWS_PAGE = (
+    "<html><body><p>The Pentagon's AI edge is being distilled away.</p></body></html>"
+)
 
 
 def _record(**overrides: Any) -> dict[str, Any]:
@@ -63,7 +65,7 @@ def _record(**overrides: Any) -> dict[str, Any]:
         "opportunity_id": "opp-3fd0ef54b86e",
         "opportunity_score": 0.71,
         "opportunity_priority": "STANDARD",
-        "gate_results": "{\"credibility\": true, \"volume\": true, \"velocity\": true, \"novelty\": true}",
+        "gate_results": '{"credibility": true, "volume": true, "velocity": true, "novelty": true}',
         "investigation_id": "inv-18f3ec740f1e",
         "hypothesis": "The committee advanced H.R.1 with an amendment.",
         "outcome_classification": "INVESTIGATE",
@@ -94,8 +96,12 @@ class Web:
     def handler(self, request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         self.requests.append(url)
-        status, content_type, body = self.pages.get(url, (404, "text/plain", b"not found"))
-        return httpx.Response(status, headers={"content-type": content_type}, content=body)
+        status, content_type, body = self.pages.get(
+            url, (404, "text/plain", b"not found")
+        )
+        return httpx.Response(
+            status, headers={"content-type": content_type}, content=body
+        )
 
     @property
     def transport(self) -> httpx.MockTransport:
@@ -104,7 +110,8 @@ class Web:
 
 def _write(path: Path, rows: list[dict[str, Any] | str]) -> Path:
     path.write_text(
-        "\n".join(r if isinstance(r, str) else json.dumps(r) for r in rows) + "\n", encoding="utf-8"
+        "\n".join(r if isinstance(r, str) else json.dumps(r) for r in rows) + "\n",
+        encoding="utf-8",
     )
     return path
 
@@ -134,7 +141,9 @@ def test_parse_record_accepts_real_shape_with_null_excerpt() -> None:
         ({"written_at": "soon"}, "written_at"),
     ],
 )
-def test_parse_record_rejects_bad_lines(overrides: dict[str, Any], message: str) -> None:
+def test_parse_record_rejects_bad_lines(
+    overrides: dict[str, Any], message: str
+) -> None:
     with pytest.raises(Spec1RecordError, match=message):
         parse_record(json.dumps(_record(**overrides)))
 
@@ -142,14 +151,18 @@ def test_parse_record_rejects_bad_lines(overrides: dict[str, Any], message: str)
 def test_lead_id_is_deterministic_and_not_a_security_hash() -> None:
     record = parse_record(json.dumps(_record()))
     expected = uuid.UUID(
-        bytes=hashlib.sha256(b"spec1:rec-af668b065ac3", usedforsecurity=False).digest()[:16],
+        bytes=hashlib.sha256(b"spec1:rec-af668b065ac3", usedforsecurity=False).digest()[
+            :16
+        ],
         version=5,
     )
     assert lead_id_for(record) == str(expected)
     assert lead_id_for(parse_record(json.dumps(_record()))) == lead_id_for(record)
 
 
-def test_lead_id_hash_is_marked_usedforsecurity_false(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lead_id_hash_is_marked_usedforsecurity_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[dict[str, Any]] = []
     real = hashlib.sha256
 
@@ -166,8 +179,18 @@ def test_load_verdicts_keeps_the_latest(tmp_path: Path) -> None:
     path = _write(
         tmp_path / "verdicts.jsonl",
         [
-            {"record_id": "rec-1", "verdict": "correct", "reviewer": "a", "reviewed_at": "2026-10-01T00:00:00+00:00"},
-            {"record_id": "rec-1", "verdict": "incorrect", "reviewer": "b", "reviewed_at": "2026-10-02T00:00:00+00:00"},
+            {
+                "record_id": "rec-1",
+                "verdict": "correct",
+                "reviewer": "a",
+                "reviewed_at": "2026-10-01T00:00:00+00:00",
+            },
+            {
+                "record_id": "rec-1",
+                "verdict": "incorrect",
+                "reviewer": "b",
+                "reviewed_at": "2026-10-02T00:00:00+00:00",
+            },
             {"record_id": "rec-2", "verdict": "maybe"},
             "{bad",
         ],
@@ -196,12 +219,25 @@ def test_import_end_to_end_offline(tmp_path: Path) -> None:
     verdicts = _write(
         tmp_path / "verdicts.jsonl",
         [
-            {"record_id": "rec-wrong", "verdict": "incorrect", "reviewed_at": "2026-10-30T00:00:00+00:00"},
-            {"record_id": "rec-gov", "verdict": "partial", "reviewer": "matt", "reviewed_at": "2026-10-30T00:00:00+00:00"},
+            {
+                "record_id": "rec-wrong",
+                "verdict": "incorrect",
+                "reviewed_at": "2026-10-30T00:00:00+00:00",
+            },
+            {
+                "record_id": "rec-gov",
+                "verdict": "partial",
+                "reviewer": "matt",
+                "reviewed_at": "2026-10-30T00:00:00+00:00",
+            },
         ],
     )
     result = import_spec1_records(
-        store, _allocator(), verdicts_path=verdicts, archive_dir=tmp_path / "a", transport=web.transport
+        store,
+        _allocator(),
+        verdicts_path=verdicts,
+        archive_dir=tmp_path / "a",
+        transport=web.transport,
     )
     leads = _by_record(result.packets)
 
@@ -226,16 +262,26 @@ def test_import_end_to_end_offline(tmp_path: Path) -> None:
     assert leads["rec-news"].source_artifacts[0].tier == "tier_3_secondary"
     for packet in result.packets:
         sealed = packet.source_artifacts[0]
-        text = read_artifact_text(Path(sealed.raw_payload_path).read_bytes(), sealed.metadata["content_type"])
+        text = read_artifact_text(
+            Path(sealed.raw_payload_path).read_bytes(), sealed.metadata["content_type"]
+        )
         assert text is not None
         for excerpt in packet.verbatim_excerpts.values():
             assert excerpt and excerpt_is_verbatim(excerpt, text)
 
 
 def test_offline_fixture_is_deterministic(tmp_path: Path) -> None:
-    store = _write(tmp_path / "s.jsonl", [_record(record_id="rec-gov"), _record(record_id="rec-news", signal_url=NEWS_URL)])
+    store = _write(
+        tmp_path / "s.jsonl",
+        [
+            _record(record_id="rec-gov"),
+            _record(record_id="rec-news", signal_url=NEWS_URL),
+        ],
+    )
     runs = [
-        import_spec1_records(store, _allocator(), archive_dir=tmp_path / name, transport=Web().transport)
+        import_spec1_records(
+            store, _allocator(), archive_dir=tmp_path / name, transport=Web().transport
+        )
         for name in ("a", "b")
     ]
     for first, second in zip(runs[0].packets, runs[1].packets, strict=True):
@@ -243,18 +289,28 @@ def test_offline_fixture_is_deterministic(tmp_path: Path) -> None:
         assert first.anomaly_score == second.anomaly_score
         assert first.verbatim_excerpts == second.verbatim_excerpts
         assert first.paste_ready_prompt == second.paste_ready_prompt
-        assert first.source_artifacts[0].sha256_hash == second.source_artifacts[0].sha256_hash
+        assert (
+            first.source_artifacts[0].sha256_hash
+            == second.source_artifacts[0].sha256_hash
+        )
 
 
 def test_known_leads_are_not_fetched_and_failures_are_reported(tmp_path: Path) -> None:
     store = _write(
         tmp_path / "s.jsonl",
-        [_record(record_id="rec-gov"), _record(record_id="rec-404", signal_url="https://www.congress.gov/missing")],
+        [
+            _record(record_id="rec-gov"),
+            _record(record_id="rec-404", signal_url="https://www.congress.gov/missing"),
+        ],
     )
     web = Web()
     known = {lead_id_for(parse_record(json.dumps(_record(record_id="rec-gov"))))}
     result = import_spec1_records(
-        store, _allocator(), is_known=known.__contains__, archive_dir=tmp_path / "a", transport=web.transport
+        store,
+        _allocator(),
+        is_known=known.__contains__,
+        archive_dir=tmp_path / "a",
+        transport=web.transport,
     )
     assert result.packets == []
     assert result.skipped == {"known": 1, "seal_failed": 1}
@@ -263,7 +319,9 @@ def test_known_leads_are_not_fetched_and_failures_are_reported(tmp_path: Path) -
 
 
 def test_missing_store_is_reported(tmp_path: Path) -> None:
-    result = import_spec1_records(tmp_path / "none.jsonl", _allocator(), verdicts_path=tmp_path / "nov.jsonl")
+    result = import_spec1_records(
+        tmp_path / "none.jsonl", _allocator(), verdicts_path=tmp_path / "nov.jsonl"
+    )
     assert result.packets == []
     assert any("verdicts file not found" in e for e in result.errors)
     assert any("store not found" in e for e in result.errors)
@@ -279,7 +337,10 @@ def test_primary_source_clears_triage_and_news_alone_does_not(
 ) -> None:
     store = _write(
         tmp_path / "s.jsonl",
-        [_record(record_id="rec-gov"), _record(record_id="rec-news", signal_url=NEWS_URL)],
+        [
+            _record(record_id="rec-gov"),
+            _record(record_id="rec-news", signal_url=NEWS_URL),
+        ],
     )
     result = import_spec1_records(
         store,
@@ -289,8 +350,12 @@ def test_primary_source_clears_triage_and_news_alone_does_not(
     )
     report = triage_packets(result.packets, "spec1_osint", db, _OfflineEnricher())
     assert len(report.written) == 1
-    assert [(r.gate, r.reason) for r in report.rejected] == [("authority", "no tier 1 or tier 2 source")]
-    row = db.execute("SELECT adapter_name, subject_domain, analysis_tier::text FROM triage_records").fetchone()
+    assert [(r.gate, r.reason) for r in report.rejected] == [
+        ("authority", "no tier 1 or tier 2 source")
+    ]
+    row = db.execute(
+        "SELECT adapter_name, subject_domain, analysis_tier::text FROM triage_records"
+    ).fetchone()
     assert row == ("spec1_importer", "spec1_osint", "rule_based")
 
 
@@ -312,7 +377,10 @@ def test_cli_spec1_jsonl_writes_then_dedupes(
     def run() -> dict[str, Any]:
         buffer = io.StringIO()
         with redirect_stdout(buffer):
-            assert mycroft_triage.main(["--dsn", ledger_dsn, "--spec1-jsonl", str(store)]) == 0
+            assert (
+                mycroft_triage.main(["--dsn", ledger_dsn, "--spec1-jsonl", str(store)])
+                == 0
+            )
         return json.loads(buffer.getvalue())
 
     assert run()["spec1_importer"] == {"written": 1, "rejected": 0}
@@ -325,6 +393,11 @@ def test_source_tiers_cover_federal_and_civic_records() -> None:
 
     assert classify_source_tier(GOV_URL) == "tier_1_primary"
     assert classify_source_tier("https://efile.fara.gov/docs/1.pdf") == "tier_1_primary"
-    assert classify_source_tier("https://secure.sos.state.or.us/orestar/x") == "tier_1_primary"
+    assert (
+        classify_source_tier("https://secure.sos.state.or.us/orestar/x")
+        == "tier_1_primary"
+    )
     assert classify_source_tier(NEWS_URL) == "tier_3_secondary"
-    assert classify_source_tier("https://congress.gov.example.net/x") == "tier_3_secondary"
+    assert (
+        classify_source_tier("https://congress.gov.example.net/x") == "tier_3_secondary"
+    )

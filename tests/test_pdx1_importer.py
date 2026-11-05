@@ -38,15 +38,21 @@ from spec1_bridge.pdx1_importer import (
     score_record,
 )
 
-ORESTAR_URL = "https://secure.sos.state.or.us/orestar/gotoPublicTransactionSearch.do?id=1"
+ORESTAR_URL = (
+    "https://secure.sos.state.or.us/orestar/gotoPublicTransactionSearch.do?id=1"
+)
 ORESTAR_PAGE = (
     "<html><body><h1>ORESTAR Transaction</h1>"
     "<p>Contribution $25,000 to Committee X</p></body></html>"
 )
 PRESS_URL = "https://www.oregonlive.com/politics/2026/10/story.html"
-PRESS_PAGE = "<html><body><p>Commissioner seat 3 said the vote was close.</p></body></html>"
+PRESS_PAGE = (
+    "<html><body><p>Commissioner seat 3 said the vote was close.</p></body></html>"
+)
 SEI_URL = "https://apps.oregon.gov/sei/filing/42"
-SEI_PAGE = "<html><body><p>Statement of Economic Interest, filed 2026.</p></body></html>"
+SEI_PAGE = (
+    "<html><body><p>Statement of Economic Interest, filed 2026.</p></body></html>"
+)
 PDF_URL = "https://www.portland.gov/sites/default/files/record.bin"
 
 
@@ -62,7 +68,13 @@ def _record(**overrides: Any) -> dict[str, Any]:
         "priority": "STANDARD",
         "confidence": 0.9,
         "tier": "HARD_RECORD",
-        "gates": {"credibility": True, "volume": True, "velocity": True, "novelty": True, "detail": {}},
+        "gates": {
+            "credibility": True,
+            "volume": True,
+            "velocity": True,
+            "novelty": True,
+            "detail": {},
+        },
         "anomaly": None,
         "entity_ids": ["seat-metro-d2"],
         "signal_id": "sig_a",
@@ -102,8 +114,12 @@ class Web:
     def handler(self, request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         self.requests.append(url)
-        status, content_type, body = self.pages.get(url, (404, "text/plain", b"not found"))
-        return httpx.Response(status, headers={"content-type": content_type}, content=body)
+        status, content_type, body = self.pages.get(
+            url, (404, "text/plain", b"not found")
+        )
+        return httpx.Response(
+            status, headers={"content-type": content_type}, content=body
+        )
 
     @property
     def transport(self) -> httpx.MockTransport:
@@ -127,11 +143,20 @@ def _by_record(packets: list[Any]) -> dict[str, Any]:
 
 def test_classify_source_tier_uses_real_hosts() -> None:
     assert classify_source_tier(ORESTAR_URL) == "tier_1_primary"
-    assert classify_source_tier("https://data.wa.gov/resource/kv7h-kjye.json") == "tier_1_primary"
-    assert classify_source_tier("https://olis.oregonlegislature.gov/liz/2025R1") == "tier_1_primary"
+    assert (
+        classify_source_tier("https://data.wa.gov/resource/kv7h-kjye.json")
+        == "tier_1_primary"
+    )
+    assert (
+        classify_source_tier("https://olis.oregonlegislature.gov/liz/2025R1")
+        == "tier_1_primary"
+    )
     assert classify_source_tier(SEI_URL) == "tier_1_primary"
     assert classify_source_tier(PRESS_URL) == "tier_3_secondary"
-    assert classify_source_tier("https://sos.oregon.gov.example.com/x") == "tier_3_secondary"
+    assert (
+        classify_source_tier("https://sos.oregon.gov.example.com/x")
+        == "tier_3_secondary"
+    )
 
 
 def test_parse_record_accepts_null_anomaly_and_null_url() -> None:
@@ -152,7 +177,9 @@ def test_parse_record_accepts_null_anomaly_and_null_url() -> None:
         ({"record_id": None}, "record_id"),
     ],
 )
-def test_parse_record_rejects_what_pdx1_never_writes(overrides: dict[str, Any], message: str) -> None:
+def test_parse_record_rejects_what_pdx1_never_writes(
+    overrides: dict[str, Any], message: str
+) -> None:
     with pytest.raises(Pdx1RecordError, match=message):
         parse_record(json.dumps(_record(**overrides)))
 
@@ -162,8 +189,18 @@ def test_score_is_priority_floor_raised_by_sigma() -> None:
     assert score_record(parse_record(json.dumps(_record(priority="STANDARD")))) == 45.0
     assert score_record(parse_record(json.dumps(_record(priority="ELEVATED")))) == 60.0
     three_sigma = dict(ANOMALY, sigma=3.0)
-    assert score_record(parse_record(json.dumps(_record(priority="MONITOR", anomaly=three_sigma)))) == 60.0
-    assert score_record(parse_record(json.dumps(_record(priority="ELEVATED", anomaly=ANOMALY)))) == 100.0
+    assert (
+        score_record(
+            parse_record(json.dumps(_record(priority="MONITOR", anomaly=three_sigma)))
+        )
+        == 60.0
+    )
+    assert (
+        score_record(
+            parse_record(json.dumps(_record(priority="ELEVATED", anomaly=ANOMALY)))
+        )
+        == 100.0
+    )
 
 
 def test_import_end_to_end_seals_for_real(tmp_path: Path) -> None:
@@ -176,8 +213,18 @@ def test_import_end_to_end_seals_for_real(tmp_path: Path) -> None:
             _record(record_id="rec_monitor", priority="MONITOR"),
             _record(record_id="rec_no_url", url=None),
             "{not json",
-            _record(record_id="rec_inferred", tier="INFERRED", url=SEI_URL, pattern="Seat 2 linked to PAC"),
-            _record(record_id="rec_press", tier="REPORTED", url=PRESS_URL, pattern="not in page"),
+            _record(
+                record_id="rec_inferred",
+                tier="INFERRED",
+                url=SEI_URL,
+                pattern="Seat 2 linked to PAC",
+            ),
+            _record(
+                record_id="rec_press",
+                tier="REPORTED",
+                url=PRESS_URL,
+                pattern="not in page",
+            ),
         ],
     )
     result = import_pdx1_signals(
@@ -196,15 +243,21 @@ def test_import_end_to_end_seals_for_real(tmp_path: Path) -> None:
     assert anomaly.analysis_tier == "rule_based"
     assert artifact.tier == "tier_1_primary"
     assert artifact.source_id.startswith("S-") and artifact.source_id[2:].isdigit()
-    assert anomaly.lead_id == str(uuid.uuid5(pdx1_importer.PDX1_NAMESPACE, "rec_anomaly"))
-    assert anomaly.verbatim_excerpts == {artifact.source_id: "Contribution $25,000 to Committee X"}
+    assert anomaly.lead_id == str(
+        uuid.uuid5(pdx1_importer.PDX1_NAMESPACE, "rec_anomaly")
+    )
+    assert anomaly.verbatim_excerpts == {
+        artifact.source_id: "Contribution $25,000 to Committee X"
+    }
 
     assert leads["rec_inferred"].evidence_bar_passed is False
     assert leads["rec_press"].source_artifacts[0].tier == "tier_3_secondary"
 
     for packet in result.packets:
         sealed = packet.source_artifacts[0]
-        text = read_artifact_text(Path(sealed.raw_payload_path).read_bytes(), sealed.metadata["content_type"])
+        text = read_artifact_text(
+            Path(sealed.raw_payload_path).read_bytes(), sealed.metadata["content_type"]
+        )
         assert text is not None
         for excerpt in packet.verbatim_excerpts.values():
             assert excerpt and excerpt_is_verbatim(excerpt, text)
@@ -213,7 +266,9 @@ def test_import_end_to_end_seals_for_real(tmp_path: Path) -> None:
 def test_duplicate_record_ids_in_one_store_count_as_known(tmp_path: Path) -> None:
     web = Web()
     store = _write_store(tmp_path / "s.jsonl", [_record(), _record()])
-    result = import_pdx1_signals(store, _allocator(), archive_dir=tmp_path / "a", transport=web.transport)
+    result = import_pdx1_signals(
+        store, _allocator(), archive_dir=tmp_path / "a", transport=web.transport
+    )
     assert len(result.packets) == 1
     assert result.skipped == {"known": 1}
     assert len(web.requests) == 1
@@ -229,15 +284,21 @@ def test_seal_failure_and_unreadable_source_are_skipped(tmp_path: Path) -> None:
             _record(record_id="rec_ok"),
         ],
     )
-    result = import_pdx1_signals(store, _allocator(), archive_dir=tmp_path / "a", transport=web.transport)
+    result = import_pdx1_signals(
+        store, _allocator(), archive_dir=tmp_path / "a", transport=web.transport
+    )
     assert list(_by_record(result.packets)) == ["rec_ok"]
     assert result.skipped == {"seal_failed": 1, "no_source_text": 1}
     assert any("rec_404" in error for error in result.errors)
 
 
 def test_known_leads_are_not_fetched_again(tmp_path: Path) -> None:
-    store = _write_store(tmp_path / "s.jsonl", [_record(record_id="rec_a"), _record(record_id="rec_b")])
-    first = import_pdx1_signals(store, _allocator(), archive_dir=tmp_path / "a", transport=Web().transport)
+    store = _write_store(
+        tmp_path / "s.jsonl", [_record(record_id="rec_a"), _record(record_id="rec_b")]
+    )
+    first = import_pdx1_signals(
+        store, _allocator(), archive_dir=tmp_path / "a", transport=Web().transport
+    )
     known = {p.lead_id for p in first.packets}
 
     web = Web()
@@ -248,7 +309,11 @@ def test_known_leads_are_not_fetched_again(tmp_path: Path) -> None:
         return "S-1"
 
     second = import_pdx1_signals(
-        store, allocate, is_known=known.__contains__, archive_dir=tmp_path / "b", transport=web.transport
+        store,
+        allocate,
+        is_known=known.__contains__,
+        archive_dir=tmp_path / "b",
+        transport=web.transport,
     )
     assert second.packets == []
     assert second.skipped == {"known": 2}
@@ -261,7 +326,9 @@ def test_missing_store_and_bad_priority(tmp_path: Path) -> None:
     assert result.packets == []
     assert result.errors and "store not found" in result.errors[0]
     with pytest.raises(ValueError, match="min_priority"):
-        import_pdx1_signals(tmp_path / "missing.jsonl", _allocator(), min_priority="HIGH")
+        import_pdx1_signals(
+            tmp_path / "missing.jsonl", _allocator(), min_priority="HIGH"
+        )
 
 
 class _OfflineEnricher(OllamaEnricher):
@@ -276,7 +343,9 @@ def test_only_hard_primary_records_clear_triage(
         tmp_path / "s.jsonl",
         [
             _record(record_id="rec_hard", priority="ELEVATED", anomaly=ANOMALY),
-            _record(record_id="rec_inferred", tier="INFERRED", url=SEI_URL, pattern="x"),
+            _record(
+                record_id="rec_inferred", tier="INFERRED", url=SEI_URL, pattern="x"
+            ),
             _record(record_id="rec_press", tier="REPORTED", url=PRESS_URL, pattern="x"),
         ],
     )
@@ -312,18 +381,29 @@ def test_cli_pdx1_store_writes_then_dedupes(
         return real_seal(*args, **{**kwargs, "transport": web.transport})
 
     monkeypatch.setattr(pdx1_importer, "fetch_and_seal_source", offline_seal)
-    store = _write_store(tmp_path / "s.jsonl", [_record(priority="ELEVATED"), _record(record_id="rec_m", priority="MONITOR")])
+    store = _write_store(
+        tmp_path / "s.jsonl",
+        [_record(priority="ELEVATED"), _record(record_id="rec_m", priority="MONITOR")],
+    )
 
     def run(*extra: str) -> dict[str, Any]:
         buffer = io.StringIO()
         with redirect_stdout(buffer):
-            assert mycroft_triage.main(["--dsn", ledger_dsn, "--pdx1-store", str(store), *extra]) == 0
+            assert (
+                mycroft_triage.main(
+                    ["--dsn", ledger_dsn, "--pdx1-store", str(store), *extra]
+                )
+                == 0
+            )
         return json.loads(buffer.getvalue())
 
     assert run()["pdx1_importer"] == {"written": 1, "rejected": 0}
     assert run()["pdx1_importer"] == {"written": 0, "rejected": 0}
     assert len(web.requests) == 1
-    assert run("--pdx1-min-priority", "MONITOR")["pdx1_importer"] == {"written": 0, "rejected": 1}
+    assert run("--pdx1-min-priority", "MONITOR")["pdx1_importer"] == {
+        "written": 0,
+        "rejected": 1,
+    }
 
 
 SEARCH_URL = "https://secure.sos.state.or.us/orestar/gotoPublicTransactionDetail.do?tranId=4417392"
@@ -350,7 +430,9 @@ def test_hollow_sources_are_skipped(tmp_path: Path) -> None:
     real_handler = web.handler
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if str(request.url) == PDC_OLD.replace("browse/campaign-explorer", "browse/old"):
+        if str(request.url) == PDC_OLD.replace(
+            "browse/campaign-explorer", "browse/old"
+        ):
             web.requests.append(str(request.url))
             return httpx.Response(301, headers={"location": PDC_NEW})
         return real_handler(request)
@@ -370,13 +452,22 @@ def test_hollow_sources_are_skipped(tmp_path: Path) -> None:
         ],
     )
     result = import_pdx1_signals(
-        store, _allocator(), archive_dir=tmp_path / "a", transport=httpx.MockTransport(handler)
+        store,
+        _allocator(),
+        archive_dir=tmp_path / "a",
+        transport=httpx.MockTransport(handler),
     )
 
     assert list(_by_record(result.packets)) == ["rec_ok"]
     assert result.skipped == {"hollow_source": 5}
     assert SEI_LANDING not in web.requests  # a known landing page is never fetched
-    for record_id in ("rec_search", "rec_sei", "rec_redirect", "rec_shared_a", "rec_shared_b"):
+    for record_id in (
+        "rec_search",
+        "rec_sei",
+        "rec_redirect",
+        "rec_shared_a",
+        "rec_shared_b",
+    ):
         assert any(error.startswith(record_id) for error in result.errors)
 
 
@@ -398,21 +489,35 @@ def test_only_live_and_cache_records_are_imported(tmp_path: Path) -> None:
         tmp_path / "s.jsonl",
         [
             _record(record_id="rec_live"),
-            _record(record_id="rec_cache", origin="cache", url=SEI_URL, pattern="Statement of Economic Interest"),
+            _record(
+                record_id="rec_cache",
+                origin="cache",
+                url=SEI_URL,
+                pattern="Statement of Economic Interest",
+            ),
             _record(record_id="rec_fixture", origin="fixture"),
             no_origin,
             _record(record_id="rec_odd", origin="synthetic"),
         ],
     )
-    result = import_pdx1_signals(store, _allocator(), archive_dir=tmp_path / "a", transport=web.transport)
+    result = import_pdx1_signals(
+        store, _allocator(), archive_dir=tmp_path / "a", transport=web.transport
+    )
 
     assert set(_by_record(result.packets)) == {"rec_live", "rec_cache"}
     assert result.skipped == {"not_live": 3}
     assert sorted(web.requests) == sorted([ORESTAR_URL, SEI_URL])
-    assert _by_record(result.packets)["rec_cache"].source_artifacts[0].metadata["pdx1_origin"] == "cache"
+    assert (
+        _by_record(result.packets)["rec_cache"]
+        .source_artifacts[0]
+        .metadata["pdx1_origin"]
+        == "cache"
+    )
 
 
-PDC_REPORT = "https://my.pdc.wa.gov/public/registrations/campaign-finance-report/110401493"
+PDC_REPORT = (
+    "https://my.pdc.wa.gov/public/registrations/campaign-finance-report/110401493"
+)
 PDC_ROW = "https://data.wa.gov/resource/kv7h-kjye.json?id=21807083&$select=id,amount"
 PDC_ROW_BODY = b'[{"id":"21807083","amount":"96.62"}]'
 PDC_MISSING = "https://data.wa.gov/resource/kv7h-kjye.json?id=1&$select=id,amount"
@@ -429,11 +534,25 @@ def test_evidence_url_is_sealed_and_url_is_kept(tmp_path: Path) -> None:
     store = _write_store(
         tmp_path / "s.jsonl",
         [
-            _record(record_id="rec_pdc", source_type="WA_PDC", url=PDC_REPORT, evidence_url=PDC_ROW, pattern="x"),
-            _record(record_id="rec_gone", source_type="WA_PDC", url=PDC_REPORT, evidence_url=PDC_MISSING, pattern="x"),
+            _record(
+                record_id="rec_pdc",
+                source_type="WA_PDC",
+                url=PDC_REPORT,
+                evidence_url=PDC_ROW,
+                pattern="x",
+            ),
+            _record(
+                record_id="rec_gone",
+                source_type="WA_PDC",
+                url=PDC_REPORT,
+                evidence_url=PDC_MISSING,
+                pattern="x",
+            ),
         ],
     )
-    result = import_pdx1_signals(store, _allocator(), archive_dir=tmp_path / "a", transport=web.transport)
+    result = import_pdx1_signals(
+        store, _allocator(), archive_dir=tmp_path / "a", transport=web.transport
+    )
 
     leads = _by_record(result.packets)
     assert set(leads) == {"rec_pdc"}

@@ -42,3 +42,6 @@ strict = true
 [[tool.mypy.overrides]]
 module = ["scipy.*", "skyfield.*", "swisseph"]
 ignore_missing_imports = true
+
+[tool.ruff]
+extend-exclude = [".claude"]

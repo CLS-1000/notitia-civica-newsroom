@@ -10,7 +10,12 @@ from dataclasses import dataclass, field
 RULES = [
     ("introduction", r"Introduction and first reading", "introduced", {}),
     ("passed", r"Third reading\. Passed", "passed", {}),
-    ("governor_signed_line_item", r"Governor signed with line-item veto", "enacted_line_item_veto", {}),
+    (
+        "governor_signed_line_item",
+        r"Governor signed with line-item veto",
+        "enacted_line_item_veto",
+        {},
+    ),
     ("governor_signed", r"Governor signed", "enacted", {}),
     ("governor_vetoed", r"Governor vetoed", "vetoed", {}),
     ("veto_overridden", r"Veto overridden[^.]*", "veto_overridden", {}),
@@ -55,7 +60,9 @@ def parse_row(action_text):
     for rid, rx, state, payload in COMPILED:
         m = rx.search(action_text)
         if m:
-            hits.append(Emit(state, dict(payload), rid, (m.start(), m.end()), m.group(0)))
+            hits.append(
+                Emit(state, dict(payload), rid, (m.start(), m.end()), m.group(0))
+            )
             break
     return hits, []
 
@@ -72,5 +79,7 @@ def replay(measure_id, rows):
                 return item, f"{r['Chamber']}: {frm} -> {e.state} not allowed", []
             item.states[r["Chamber"]] = e.state
             item.chamber = r["Chamber"]
-            item.history.append((r["ActionDate"], r["Chamber"], frm, e.state, e.rule_id))
+            item.history.append(
+                (r["ActionDate"], r["Chamber"], frm, e.state, e.rule_id)
+            )
     return item, None, []

@@ -147,7 +147,8 @@ def parse_record(line: str) -> Spec1Record:
         run_id=_text(raw, "run_id"),
         signal_url=url or None,
         signal_source=_text(raw, "signal_source"),
-        classification=_text(raw, "outcome_classification") or _text(raw, "classification"),
+        classification=_text(raw, "outcome_classification")
+        or _text(raw, "classification"),
         confidence=float(confidence),
         analysis_tier=_text(raw, "analysis_tier"),
         signal_excerpt=_text(raw, "signal_excerpt"),
@@ -186,7 +187,9 @@ def load_verdicts(path: Path | str | None) -> tuple[dict[str, Verdict], list[str
                 notes=_text(raw, "notes"),
             )
             if not verdict.record_id or verdict.verdict not in VALID_VERDICTS:
-                errors.append(f"verdicts line {number}: missing record_id or unknown verdict")
+                errors.append(
+                    f"verdicts line {number}: missing record_id or unknown verdict"
+                )
                 continue
             key = (verdict.reviewed_at, number)
             current = latest.get(verdict.record_id)
@@ -227,7 +230,9 @@ def pick_excerpt(record: Spec1Record, text: str) -> str:
     return normalize_whitespace(text)[:EXCERPT_CHARS].strip()
 
 
-def build_prompt(record: Spec1Record, artifact: SourceArtifact, verdict: Verdict | None) -> str:
+def build_prompt(
+    record: Spec1Record, artifact: SourceArtifact, verdict: Verdict | None
+) -> str:
     facts: dict[str, Any] = {
         "spec-1 record": f"{record.record_id} (run {record.run_id or '?'})",
         "Source": record.signal_source or "(unnamed)",
@@ -235,7 +240,9 @@ def build_prompt(record: Spec1Record, artifact: SourceArtifact, verdict: Verdict
         "spec-1 analysis tier": record.analysis_tier,
         "Hypothesis (spec-1, unverified)": record.hypothesis or "(none)",
         "Model reasoning (spec-1, unverified)": record.llm_reasoning or "(none)",
-        "Human verdict": f"{verdict.verdict} by {verdict.reviewer}" if verdict else "none filed",
+        "Human verdict": f"{verdict.verdict} by {verdict.reviewer}"
+        if verdict
+        else "none filed",
     }
     return render_prompt(
         f"OSINT LEAD: spec-1 {record.record_id}",
@@ -305,11 +312,15 @@ def import_spec1_records(
                 )
             except (httpx.HTTPError, CustodyError, ValueError, OSError) as error:
                 result.skipped["seal_failed"] += 1
-                result.errors.append(f"{record.record_id}: could not seal {record.signal_url}: {error}")
+                result.errors.append(
+                    f"{record.record_id}: could not seal {record.signal_url}: {error}"
+                )
                 continue
 
             archive_path = Path(receipt["archive_path"])
-            text = read_artifact_text(archive_path.read_bytes(), receipt["content_type"])
+            text = read_artifact_text(
+                archive_path.read_bytes(), receipt["content_type"]
+            )
             if not text or not text.strip():
                 result.skipped["no_source_text"] += 1
                 continue
