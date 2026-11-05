@@ -29,17 +29,27 @@ evidence bar, because pdx-1i derived them by correlation and no filed record
 states them. A record whose sealed source has no readable text is skipped,
 never given an invented excerpt. Every packet is analysis_tier='rule_based'.
 
-A sealed page that cannot be about its record is skipped as a hollow source:
-a known search form or landing page (checked against the URL asked for and the
-URL the fetch ended at), or one page sealed for two different records in the
-same run when the page does not state either record's own pattern. Such a page holds text, so it would pass the verbatim check, but it
-does not state the record.
+A sealed page that cannot be about its record is skipped as a hollow source.
+Such a page holds text, so it would pass the verbatim check, but it does not
+state the record. A source is hollow when:
+
+- its URL is a known search form or landing page (checked against the URL asked
+  for and the URL the fetch ended at), or it carries a host's search-form marker;
+- it is an empty answer (Socrata's `[]` for an unknown id);
+- the visible main content of an HTML page, read by spec1_bridge.page_content
+  and never the raw markup, shows nothing, shows a not-found or not-released
+  notice, is a search form or is a list of links;
+- the record's pattern names an identifier (a transaction, receipt or filing
+  number, or a bill number) and the page's visible content never states it;
+- one page is sealed for two different records in the same run and does not
+  state either record's own pattern.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from collections import Counter
 from collections.abc import Callable
@@ -63,6 +73,12 @@ from spec1_bridge.adapters.base_lazlong import (
     render_prompt,
 )
 from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
+from spec1_bridge.page_content import (
+    PageContent,
+    hollow_page_reason,
+    looks_like_html,
+    read_main_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +111,12 @@ LANDING_PAGES: Final = frozenset(
 SEARCH_FORM_MARKERS: Final = {
     "secure.sos.state.or.us": "cneSearchForm",
 }
+
+# Identifiers a pdx-1i pattern names its record by: ORE-2026-4417392 (ORESTAR),
+# WA-2026-778341 (WA PDC), SEI-2026-00871 (OGEC), and Oregon measure numbers.
+RECORD_NUMBER: Final = re.compile(r"\b([A-Z]{2,5})-(\d{4})-(\d{3,})\b")
+MEASURE_NUMBER: Final = re.compile(r"\b(HB|SB|HJR|SJR|HCR|SCR|HJM|SJM|HM|SM)\s?(\d{1,4})\b")
+MEASURE_NAMES: Final = {"HB": "House Bill", "SB": "Senate Bill"}
 
 # Hosts that publish filed public records. Anything else is secondary.
 PRIMARY_HOSTS: Final = (
@@ -178,6 +200,55 @@ def is_empty_answer(text: str) -> bool:
 def is_search_form(url: str, text: str) -> bool:
     marker = SEARCH_FORM_MARKERS.get(_host(url))
     return marker is not None and marker in text
+
+
+def record_identifiers(pattern: str) -> list[re.Pattern[str]]:
+    """What a page must say to be about the record the pattern describes.
+
+    A record number matches in full or by its final number on its own, since a
+    filing page may show 4417392 for ORE-2026-4417392. A measure matches as
+    HB 4092, HB4092 or House Bill 4092.
+    """
+    found: list[re.Pattern[str]] = []
+    for prefix, year, number in RECORD_NUMBER.findall(pattern):
+        found.append(
+            re.compile(rf"\b{prefix}-{year}-{number}\b|(?<![\d-]){number}(?!\d)", re.IGNORECASE)
+        )
+    for prefix, number in MEASURE_NUMBER.findall(pattern):
+        names = "|".join(re.escape(name) for name in (prefix, MEASURE_NAMES.get(prefix)) if name)
+        found.append(re.compile(rf"\b(?:{names})\s?{number}\b", re.IGNORECASE))
+    return found
+
+
+def states_record(record: Pdx1Record, page: PageContent) -> bool:
+    """The page's visible content names the record, when the pattern names one."""
+    wanted = record_identifiers(record.pattern)
+    return not wanted or any(item.search(page.text) for item in wanted)
+
+
+def hollow_source_reason(
+    record: Pdx1Record, final_url: str, text: str, page: PageContent | None
+) -> str | None:
+    """Why a sealed source cannot state its record, or None if it may.
+
+    page is the HTML page's visible main content, or None for JSON, PDF or plain
+    text. evidence_url payloads are JSON rows that pdx-1i fetched by the
+    record's own id, so only the empty answer applies to them.
+    """
+    if is_landing_page(final_url):
+        return "is a landing page"
+    if is_search_form(final_url, text):
+        return "is a search form"
+    if is_empty_answer(text):
+        return "is an empty answer"
+    if page is None:
+        return None
+    reason = hollow_page_reason(page)
+    if reason is not None:
+        return reason
+    if not states_record(record, page):
+        return "does not state the record's identifier"
+    return None
 
 
 def _optional_text(raw: dict[str, Any], name: str) -> str:
@@ -393,15 +464,15 @@ def import_pdx1_signals(
                 result.skipped["no_source_text"] += 1
                 continue
             final_url = receipt["final_url"]
-            if (
-                is_landing_page(final_url)
-                or is_search_form(final_url, text)
-                or is_empty_answer(text)
-            ):
+            page = (
+                read_main_content(text)
+                if looks_like_html(text, receipt["content_type"])
+                else None
+            )
+            hollow = hollow_source_reason(record, final_url, text, page)
+            if hollow is not None:
                 result.skipped["hollow_source"] += 1
-                result.errors.append(
-                    f"{record.record_id}: {final_url} is a search or landing page"
-                )
+                result.errors.append(f"{record.record_id}: {final_url} {hollow}")
                 continue
 
             artifact = SourceArtifact(
