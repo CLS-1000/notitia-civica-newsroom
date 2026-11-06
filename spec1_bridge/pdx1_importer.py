@@ -92,6 +92,17 @@ ADAPTER_NAME: Final = "pdx1_importer"
 SUBJECT_DOMAIN: Final = "oregon_civic"
 WASHINGTON_DOMAIN: Final = "washington_civic"
 WASHINGTON_HOSTS: Final = ("pdc.wa.gov",)
+# pdx-1i's WA PDC contributor clause: "The contributor is <NAME> of <city>,
+# <ST>, recorded as ...". pdx-1i often cuts the pattern off ("... of...").
+# place is everything after the name that names where the contributor is.
+WA_CONTRIBUTOR: Final = re.compile(
+    r"The contributor is (?P<name>.+?)(?P<place>"
+    r"\s+of\s+(?P<city>[^,.]+?),\s*(?P<state>[^,.]+?)"
+    r"(?=,?\s*(?:recorded\b|\.\.\.|…|$))"
+    r"|\s+of\s+(?P<city_only>[^,.]+?),?(?=\.\.\.|…|$)"
+    r"|\s+of\s*(?=\.\.\.|…|$)"
+    r"|(?=,?\s*(?:recorded\b|\.\.\.|…|$)))"
+)
 ARTIFACT_KIND: Final = "pdx1_record_source"
 PDX1_NAMESPACE: Final = uuid.UUID("a3b89f21-7c42-4f1b-8e2a-9e123456789a")
 
@@ -578,11 +589,73 @@ def pick_excerpt(record: Pdx1Record, text: str, page: PageContent | None = None)
     return excerpt if excerpt_is_verbatim(excerpt, text) else ""
 
 
+def _sealed_wa_row(artifact: SourceArtifact) -> dict[str, Any] | None:
+    """The receipt row of a sealed data.wa.gov answer, or None if it is not one."""
+    try:
+        raw = Path(artifact.raw_payload_path).read_bytes()
+    except OSError:
+        return None
+    content_type = str(artifact.metadata.get("content_type", "application/json"))
+    try:
+        rows = json.loads(read_artifact_text(raw, content_type) or "")
+    except ValueError:
+        return None
+    if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+        return rows[0]
+    return rows if isinstance(rows, dict) else None
+
+
+def _stated(value: str | None) -> str | None:
+    """value, or None for pdx-1i's "not stated" (also cut short: "not")."""
+    value = (value or "").strip(" ,.")
+    return None if not value or "not stated".startswith(value.lower()) else value
+
+
+def _individual_label(city: str | None, state: str | None) -> str:
+    place = ", ".join(part for part in (_stated(city), _stated(state)) if part)
+    return (
+        f"an individual contributor from {place}"
+        if place
+        else ("an individual contributor (location not stated)")
+    )
+
+
+def redact_wa_contributor(record: Pdx1Record, artifact: SourceArtifact) -> str:
+    """The record's pattern with an individual WA PDC contributor's name removed.
+
+    pdx-1i writes "The contributor is <NAME> of <city>, <ST>, recorded as ...",
+    often cut off after "of". Whether the contributor is a person comes from the
+    sealed data.wa.gov row's contributor_category, not from the name. A row
+    whose category is "Individual" has the name replaced with "an individual
+    contributor from <city>, <state>" (city from the pattern, state from the
+    pattern or the row); committees, PACs, parties and businesses keep theirs.
+    If the sealed source states no category, the name is replaced too: an
+    unknown contributor is treated as a private person.
+    """
+    pattern = record.pattern
+    if record.source_type != "WA_PDC":
+        return pattern
+    match = WA_CONTRIBUTOR.search(pattern)
+    if match is None:
+        return pattern
+    row = _sealed_wa_row(artifact) or {}
+    category = str(row.get("contributor_category") or "").strip().lower()
+    if category and category != "individual":
+        return pattern
+    state = match.group("state") or row.get("contributor_state")
+    city = match.group("city") or match.group("city_only")
+    label = _individual_label(city, state)
+    return pattern[: match.start("name")] + label + pattern[match.end("place") :]
+
+
 def build_prompt(record: Pdx1Record, artifact: SourceArtifact) -> str:
     facts: dict[str, Any] = {
         "pdx-1i record": record.record_id,
         "Source type": record.source_type,
-        "Pattern (pdx-1i summary, not verbatim)": record.pattern or "(none)",
+        "Pattern (pdx-1i summary, not verbatim)": redact_wa_contributor(
+            record, artifact
+        )
+        or "(none)",
         "pdx-1i outcome / priority": f"{record.outcome or '?'} / {record.priority}",
         "pdx-1i evidence tier": record.tier,
         "Seats / entities": ", ".join(record.entity_ids) or "none",
