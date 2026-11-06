@@ -18,8 +18,8 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
-    "pa11y-ci": "^4.0.0",
+    "pa11y-ci": "^5.0.0",
     "stylelint": "^17.16.0",
-    "typescript": "^5.8.3"
+    "typescript": "^7.0.2"
   }
 }
