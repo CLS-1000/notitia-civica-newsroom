@@ -1,0 +1,20 @@
+# Dependabot version updates. Every update is a PR for review: there is no
+# auto-merge workflow, and none should be added for these PRs.
+version: 2
+updates:
+  # The public site: all npm updates in web_public grouped into one weekly PR.
+  - package-ecosystem: "npm"
+    directory: "/web_public"
+    schedule:
+      interval: "weekly"
+    groups:
+      web-public:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions used by .github/workflows, checked weekly.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
