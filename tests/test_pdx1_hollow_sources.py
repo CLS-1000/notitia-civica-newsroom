@@ -152,6 +152,14 @@ AUDITED: dict[str, tuple[str, str, str, str, str, str]] = {
 }
 SUBSTANTIVE = "rec_788528a934cc251a"
 HOLLOW = sorted(set(AUDITED) - {SUBSTANTIVE})
+# The page is HB 4092 "Relating to child safety systems.", not the audited
+# record's "regional transportation district governance", so at its OLIS URL
+# the audited record fails the subject check (tests/test_pdx1_subject_check.py).
+# This is the record as it should read, stating the page's subject.
+HB4092_MATCHING_PATTERN = (
+    "OLIS record for HB 4092, Relating to child safety systems, in the 2026 "
+    "Regular session. The measure is sponsored by House Interim Committee on..."
+)
 
 
 def _fixture(name: str) -> bytes:
@@ -259,10 +267,15 @@ def test_pdc_landing_page_is_rejected_for_not_stating_the_receipt() -> None:
 def test_substantive_hb4092_page_passes() -> None:
     page = read_main_content(_text("olis_hb4092_overview.html"))
     assert hollow_page_reason(page) is None
-    record = parse_record(json.dumps(_record(SUBSTANTIVE)))
+    record = parse_record(
+        json.dumps(_record(SUBSTANTIVE, url=_content_only_url(SUBSTANTIVE)))
+    )
+    matching = parse_record(
+        json.dumps(_record(SUBSTANTIVE, pattern=HB4092_MATCHING_PATTERN))
+    )
     assert (
         hollow_source_reason(
-            record, OLIS + "HB4092", _text("olis_hb4092_overview.html"), page
+            matching, OLIS + "HB4092", _text("olis_hb4092_overview.html"), page
         )
         is None
     )
@@ -302,8 +315,18 @@ def test_audited_run_replay_keeps_only_hb4092(tmp_path: Path, by_content: bool) 
     )
 
     kept = [p.source_artifacts[0].metadata["pdx1_record_id"] for p in result.packets]
-    assert kept == [SUBSTANTIVE]
-    assert result.skipped == {"hollow_source": 7}
+    if by_content:
+        # No OLIS host, so only the content checks apply, and the page names HB 4092.
+        assert kept == [SUBSTANTIVE]
+        assert result.skipped == {"hollow_source": 7}
+    else:
+        # At its OLIS URL the HB 4092 page states another subject than the record.
+        assert kept == []
+        assert result.skipped == {"hollow_source": 8}
+        assert any(
+            error.startswith(SUBSTANTIVE) and "subject" in error
+            for error in result.errors
+        )
     for record_id in HOLLOW:
         assert any(error.startswith(record_id) for error in result.errors)
     if not by_content:
@@ -406,7 +429,9 @@ def test_json_evidence_rows_skip_the_page_checks() -> None:
 
 
 def _hb4092_lead(tmp_path: Path) -> tuple[Any, str]:
-    store = _store(tmp_path / "s.jsonl", [_record(SUBSTANTIVE)])
+    store = _store(
+        tmp_path / "s.jsonl", [_record(SUBSTANTIVE, pattern=HB4092_MATCHING_PATTERN)]
+    )
     result = import_pdx1_signals(
         store,
         _allocator(),
