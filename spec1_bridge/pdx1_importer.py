@@ -146,6 +146,19 @@ SESSION_ORDINALS: Final = {"first": 1, "second": 2, "third": 3, "fourth": 4}
 RELATING_TO: Final = re.compile(
     r"relating\s+to\s+(.+?)(?=,\s*in\s+the\s|[;.\"]|$)", re.IGNORECASE
 )
+# The record's own title: what follows "OLIS record for HB 4092," up to the
+# pattern's ", in the <session>" (2026 Regular, 2026R1), or else up to the
+# first sentence stop. Live records title a measure by its CatchLine first.
+RECORD_TITLE_TO_SESSION: Final = re.compile(
+    r"\brecord\s+for\s+[A-Z]{1,4}\s?\d{1,5}\s*,\s*(.+?)"
+    r"(?=,\s*in\s+the\s+(?:\d{4}[RS]\d|\d{4}\s+(?:(?:first|second|third|fourth)\s+)?"
+    r"(?:regular|special))\b)",
+    re.IGNORECASE,
+)
+RECORD_TITLE_TO_STOP: Final = re.compile(
+    r"\brecord\s+for\s+[A-Z]{1,4}\s?\d{1,5}\s*,\s*(.+?)(?=\.(?:\s|$)|$)",
+    re.IGNORECASE,
+)
 SUBJECT_STOPWORDS: Final = frozenset(
     {"a", "an", "and", "as", "by", "for", "in", "of", "on", "or", "the", "to", "with"}
 )
@@ -322,6 +335,22 @@ def record_session(text: str) -> str | None:
     return key.group(1) if key else None
 
 
+def record_title(text: str) -> str | None:
+    """The record's title (its CatchLine for live OLIS records), or None."""
+    flat = normalize_whitespace(text)
+    match = RECORD_TITLE_TO_SESSION.search(flat) or RECORD_TITLE_TO_STOP.search(flat)
+    if match is None:
+        return None
+    title = match.group(1).strip(" ,.")
+    if re.match(r"in\s+the\s", title, re.IGNORECASE) and record_session(title):
+        return None  # "OLIS record for HB 4092, in the 2026 Regular session."
+    return title or None
+
+
+def _folded(text: str) -> str:
+    return normalize_whitespace(text).lower()
+
+
 def url_session(url: str) -> str | None:
     """The session key in an OLIS URL: /liz/2025R1/... or ('2026R1')."""
     match = SESSION_KEY.search(httpx.URL(url).path)
@@ -363,12 +392,16 @@ def olis_mismatch_reason(
     (/liz/2026R1/...), which must equal the record's.
 
     The session check always applies: a record or URL that names no session
-    cannot be checked, so the source is rejected. The subject check applies
-    only when the record states a "Relating to" subject. Live pdx-1i OLIS
-    records take their title from the measure's CatchLine first ("Prohibits a
-    retailer ..."), a plain sentence that is not the bill's RelatingTo, so a
-    record without a "Relating to" clause is checked on session alone. When the
-    record does state a subject, a source that states none is rejected.
+    cannot be checked, so the source is rejected.
+
+    The subject check depends on what the record states. A record with a
+    "Relating to" subject is matched against the source's (subjects_match).
+    Live pdx-1i OLIS records instead take their title from the measure's
+    CatchLine ("Prohibits a retailer ..."), a plain sentence that is not the
+    bill's RelatingTo. For those, the record's title must appear verbatim, up
+    to whitespace and case, in the page's visible main content (the overview
+    shows it as "Catchline/Summary: ...") or in the raw text of a non-HTML
+    answer. A record that states neither a subject nor a title is rejected.
     """
     urls = [url for url in (record.source_url, final_url) if url and is_olis_url(url)]
     if not urls:
@@ -384,6 +417,11 @@ def olis_mismatch_reason(
             return f"is session {served}, not the record's session {session}"
     ours = record_subject(record.pattern)
     if ours is None:
+        title = record_title(record.pattern)
+        if title is None:
+            return "is an OLIS source but the record states no subject to check"
+        if _folded(title) not in _folded(page.text if page is not None else text):
+            return f"does not state the record's title {title!r} (subject mismatch)"
         return None
     theirs = record_subject(page.text if page is not None else text)
     if theirs is None:

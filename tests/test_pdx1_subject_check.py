@@ -38,6 +38,7 @@ from spec1_bridge.pdx1_importer import (
     parse_record,
     record_session,
     record_subject,
+    record_title,
     subject_domain_for,
     subjects_match,
     url_session,
@@ -135,29 +136,64 @@ def test_record_without_a_session_is_rejected_for_olis() -> None:
     )
 
 
-def test_record_without_a_subject_is_checked_on_session_only() -> None:
-    assert _reason("OLIS record for HB 4092, in the 2026 Regular session.") is None
+def test_record_without_a_subject_or_title_is_rejected() -> None:
+    reason = _reason("OLIS record for HB 4092, in the 2026 Regular session.")
+    assert reason is not None and "subject" in reason
     reason = _reason("OLIS record for HB 4092, in the 2025 Regular session.")
     assert reason is not None and "session" in reason
 
 
-# Live pdx-1i OLIS records title the measure from its CatchLine first. HB 4092
-# 2026R1: CatchLine "Prohibits a retailer ...", RelatingTo "Relating to child
-# safety systems." A CatchLine is a plain sentence, so there is no "Relating
-# to" subject on the record to compare with the page's.
+# Live pdx-1i OLIS records title the measure from its CatchLine first, and name
+# the session by its SessionKey. HB 4092 2026R1: CatchLine "Prohibits a
+# retailer ...", RelatingTo "Relating to child safety systems." A CatchLine is a
+# plain sentence with no "Relating to" subject, so the record's title must
+# appear in the page's visible content ("Catchline/Summary: ...") instead.
+HB4092_CATCHLINE = (
+    "Prohibits a retailer from knowingly selling or offering for sale, and a "
+    "retail platform operator from knowingly permitting a retailer to advertise "
+    "or offer for sale, a child safety system that does not comply with federal "
+    "standards or standards the Department of Transportation adopts by rule."
+)
 CATCHLINE_PATTERN = (
-    "OLIS record for HB 4092, Prohibits a retailer from selling a child safety "
-    "system that does not meet federal standards, in the 2026 Regular session."
+    f"OLIS record for HB 4092, {HB4092_CATCHLINE.rstrip('.')}, in the 2026R1 session."
+)
+OTHER_CATCHLINE_PATTERN = (
+    "OLIS record for HB 4092, Establishes a regional transportation district "
+    "governance task force, in the 2026R1 session."
 )
 
 
-def test_catchline_title_is_not_rejected_on_subject() -> None:
+def test_record_title_reads_the_catchline() -> None:
     assert record_subject(CATCHLINE_PATTERN) is None
+    assert record_title(CATCHLINE_PATTERN) == HB4092_CATCHLINE.rstrip(".")
+    assert record_title("OLIS record for HB 4092, in the 2026R1 session.") is None
+
+
+def test_session_key_form_is_read_from_the_record() -> None:
+    assert record_session(CATCHLINE_PATTERN) == "2026R1"
+    assert record_session("OLIS record for HB 4092, in the 2025S1 session.") == (
+        "2025S1"
+    )
+
+
+def test_hb4092_catchline_passes_on_its_own_page() -> None:
     assert _reason(CATCHLINE_PATTERN) is None
 
 
+def test_catchline_match_ignores_whitespace_and_case() -> None:
+    shouty = CATCHLINE_PATTERN.replace(
+        "Prohibits a retailer", "PROHIBITS  a\n retailer"
+    )
+    assert _reason(shouty) is None
+
+
+def test_different_catchline_is_rejected_as_a_subject_mismatch() -> None:
+    reason = _reason(OTHER_CATCHLINE_PATTERN)
+    assert reason is not None and "subject mismatch" in reason
+
+
 def test_catchline_title_still_gets_the_session_check() -> None:
-    reason = _reason(CATCHLINE_PATTERN.replace("2026 Regular", "2025 Regular"))
+    reason = _reason(CATCHLINE_PATTERN.replace("2026R1", "2025R1"))
     assert reason is not None and "session" in reason
     reason = _reason(CATCHLINE_PATTERN, OLIS_2025)
     assert reason is not None and "session" in reason
