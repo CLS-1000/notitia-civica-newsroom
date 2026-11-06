@@ -362,20 +362,17 @@ def olis_mismatch_reason(
     API's RelatingTo). The source's session is the key in each OLIS URL
     (/liz/2026R1/...), which must equal the record's.
 
-    Conservative: a record or source that states no subject, or a record or
-    URL that names no session, cannot be checked, so the source is rejected.
+    The session check always applies: a record or URL that names no session
+    cannot be checked, so the source is rejected. The subject check applies
+    only when the record states a "Relating to" subject. Live pdx-1i OLIS
+    records take their title from the measure's CatchLine first ("Prohibits a
+    retailer ..."), a plain sentence that is not the bill's RelatingTo, so a
+    record without a "Relating to" clause is checked on session alone. When the
+    record does state a subject, a source that states none is rejected.
     """
     urls = [url for url in (record.source_url, final_url) if url and is_olis_url(url)]
     if not urls:
         return None
-    ours = record_subject(record.pattern)
-    if ours is None:
-        return "is an OLIS source but the record states no subject to check"
-    theirs = record_subject(page.text if page is not None else text)
-    if theirs is None:
-        return "is an OLIS source that states no subject"
-    if not subjects_match(ours, theirs):
-        return f"states subject {theirs!r}, not the record's {ours!r}"
     session = record_session(record.pattern)
     if session is None:
         return "is an OLIS source but the record states no session to check"
@@ -385,6 +382,14 @@ def olis_mismatch_reason(
             return "is an OLIS source whose URL names no session"
         if served != session:
             return f"is session {served}, not the record's session {session}"
+    ours = record_subject(record.pattern)
+    if ours is None:
+        return None
+    theirs = record_subject(page.text if page is not None else text)
+    if theirs is None:
+        return "is an OLIS source that states no subject"
+    if not subjects_match(ours, theirs):
+        return f"states subject {theirs!r}, not the record's {ours!r}"
     return None
 
 

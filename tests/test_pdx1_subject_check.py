@@ -13,15 +13,23 @@ from __future__ import annotations
 
 import itertools
 import json
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import httpx
+import psycopg
 import pytest
 
-from spec1_bridge import pdx1_importer
+from spec1_bridge import mycroft_triage, pdx1_importer
+from spec1_bridge.contracts import Spec1LeadPacket
+from spec1_bridge.mycroft_triage import (
+    Enrichment,
+    OllamaEnricher,
+    packet_subject_domain,
+)
 from spec1_bridge.page_content import read_main_content
 from spec1_bridge.pdx1_importer import (
     hollow_source_reason,
@@ -53,6 +61,11 @@ MATCHING_PATTERN = (
     "OLIS record for HB 4092, Relating to child safety systems, in the 2026 "
     "Regular session. The measure is sponsored by House Interim Committee on..."
 )
+
+
+class _OfflineEnricher(OllamaEnricher):
+    def enrich(self, packet: Any) -> Enrichment:
+        return Enrichment("unavailable", "test", error="offline")
 
 
 def _text() -> str:
@@ -115,12 +128,39 @@ def test_url_session_mismatch_is_rejected() -> None:
     assert reason is not None and "session" in reason
 
 
-def test_record_without_a_subject_or_session_is_rejected_for_olis() -> None:
-    assert _reason("OLIS record for HB 4092, in the 2026 Regular session.") is not None
+def test_record_without_a_session_is_rejected_for_olis() -> None:
     assert (
         _reason("OLIS record for HB 4092, Relating to child safety systems.")
         is not None
     )
+
+
+def test_record_without_a_subject_is_checked_on_session_only() -> None:
+    assert _reason("OLIS record for HB 4092, in the 2026 Regular session.") is None
+    reason = _reason("OLIS record for HB 4092, in the 2025 Regular session.")
+    assert reason is not None and "session" in reason
+
+
+# Live pdx-1i OLIS records title the measure from its CatchLine first. HB 4092
+# 2026R1: CatchLine "Prohibits a retailer ...", RelatingTo "Relating to child
+# safety systems." A CatchLine is a plain sentence, so there is no "Relating
+# to" subject on the record to compare with the page's.
+CATCHLINE_PATTERN = (
+    "OLIS record for HB 4092, Prohibits a retailer from selling a child safety "
+    "system that does not meet federal standards, in the 2026 Regular session."
+)
+
+
+def test_catchline_title_is_not_rejected_on_subject() -> None:
+    assert record_subject(CATCHLINE_PATTERN) is None
+    assert _reason(CATCHLINE_PATTERN) is None
+
+
+def test_catchline_title_still_gets_the_session_check() -> None:
+    reason = _reason(CATCHLINE_PATTERN.replace("2026 Regular", "2025 Regular"))
+    assert reason is not None and "session" in reason
+    reason = _reason(CATCHLINE_PATTERN, OLIS_2025)
+    assert reason is not None and "session" in reason
 
 
 def test_check_applies_only_to_olis_hosts() -> None:
@@ -280,3 +320,70 @@ def test_washington_domain_is_carried_on_the_artifact(tmp_path: Path) -> None:
         "rec_788528a934cc251a": "washington_civic",
         "rec_or": "oregon_civic",
     }
+
+
+def test_washington_domain_reaches_triage_records(
+    tmp_path: Path,
+    db: psycopg.Connection[tuple[Any, ...]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """run_pdx1 writes each lead with its own subject_domain, not the batch's."""
+    monkeypatch.chdir(tmp_path)
+    url = "https://my.pdc.wa.gov/public/registrations/campaign-finance-report/110401493"
+    body = (
+        b"<html><body><h1>Receipt WA-2026-778341</h1><p>Washington PDC receipt "
+        b"WA-2026-778341 reports a contribution of $6,000.00 to the committee.</p>"
+        b"</body></html>"
+    )
+    store = tmp_path / "s.jsonl"
+    store.write_text(
+        json.dumps(
+            _record(
+                "Washington PDC receipt WA-2026-778341",
+                url,
+                source_type="WA_PDC",
+                record_id="rec_wa",
+            )
+        )
+        + "\n"
+        + json.dumps(_record(MATCHING_PATTERN, record_id="rec_or"))
+        + "\n",
+        encoding="utf-8",
+    )
+    pages = {url: body, OLIS_2026: FIXTURE.read_bytes()}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, headers={"content-type": HTML}, content=pages[str(request.url)]
+        )
+
+    real_seal = pdx1_importer.fetch_and_seal_source
+
+    def offline_seal(*args: Any, **kwargs: Any) -> Any:
+        return real_seal(*args, **{**kwargs, "transport": httpx.MockTransport(handler)})
+
+    monkeypatch.setattr(pdx1_importer, "fetch_and_seal_source", offline_seal)
+    report = mycroft_triage.run_pdx1(str(store), "ELEVATED", db, _OfflineEnricher())
+
+    assert len(report.written) == 2, report.rejected
+    rows = db.execute(
+        "SELECT record_id::text, subject_domain FROM triage_records"
+    ).fetchall()
+    assert dict(rows) == {
+        str(uuid.uuid5(pdx1_importer.PDX1_NAMESPACE, "rec_wa")): "washington_civic",
+        str(uuid.uuid5(pdx1_importer.PDX1_NAMESPACE, "rec_or")): "oregon_civic",
+    }
+
+
+def test_packet_subject_domain_falls_back_to_the_default() -> None:
+    packet = Spec1LeadPacket(
+        lead_id="x",
+        timestamp=datetime.now(UTC),
+        adapter_name="pdx1_importer",
+        anomaly_score=0.0,
+        evidence_bar_passed=False,
+        source_artifacts=[],
+        verbatim_excerpts={},
+        paste_ready_prompt="",
+    )
+    assert packet_subject_domain(packet, "oregon_civic") == "oregon_civic"
