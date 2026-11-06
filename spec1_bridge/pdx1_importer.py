@@ -42,7 +42,13 @@ state the record. A source is hollow when:
 - the record's pattern names an identifier (a transaction, receipt or filing
   number, or a bill number) and the page's visible content never states it;
 - one page is sealed for two different records in the same run and does not
-  state either record's own pattern.
+  state either record's own pattern;
+- it is an OLIS page or API answer (oregonlegislature.gov) whose bill title
+  ("Relating to ...") or legislative session does not match the record's
+  (see olis_mismatch_reason).
+
+Leads from WA PDC sources (pdc.wa.gov) are subject_domain washington_civic;
+every other lead is oregon_civic (see subject_domain_for).
 """
 
 from __future__ import annotations
@@ -84,6 +90,8 @@ logger = logging.getLogger(__name__)
 
 ADAPTER_NAME: Final = "pdx1_importer"
 SUBJECT_DOMAIN: Final = "oregon_civic"
+WASHINGTON_DOMAIN: Final = "washington_civic"
+WASHINGTON_HOSTS: Final = ("pdc.wa.gov",)
 ARTIFACT_KIND: Final = "pdx1_record_source"
 PDX1_NAMESPACE: Final = uuid.UUID("a3b89f21-7c42-4f1b-8e2a-9e123456789a")
 
@@ -121,6 +129,39 @@ MEASURE_NUMBER: Final = re.compile(
     r"\b(HB|SB|HJR|SJR|HCR|SCR|HJM|SJM|HM|SM)\s?(\d{1,4})\b"
 )
 MEASURE_NAMES: Final = {"HB": "House Bill", "SB": "Senate Bill"}
+
+# OLIS: the legislative information system and its OData API.
+OLIS_HOST: Final = "oregonlegislature.gov"
+# A session key as OLIS writes it in its URLs: 2026R1, 2025S1.
+SESSION_KEY: Final = re.compile(r"(?<![0-9A-Za-z])(\d{4}[RS]\d)(?![0-9A-Za-z])")
+# A session as pdx-1i's pattern names it: "in the 2026 Regular session",
+# "in the 2025 First Special Session".
+SESSION_NAME: Final = re.compile(
+    r"\b(\d{4})\s+(?:(first|second|third|fourth)\s+)?(regular|special)\s+session\b",
+    re.IGNORECASE,
+)
+SESSION_ORDINALS: Final = {"first": 1, "second": 2, "third": 3, "fourth": 4}
+# A "Relating to" clause, ended by the pattern's ", in the <session>", a ";", a
+# sentence stop or a closing JSON quote (the API's "RelatingTo" value).
+RELATING_TO: Final = re.compile(
+    r"relating\s+to\s+(.+?)(?=,\s*in\s+the\s|[;.\"]|$)", re.IGNORECASE
+)
+# The record's own title: what follows "OLIS record for HB 4092," up to the
+# pattern's ", in the <session>" (2026 Regular, 2026R1), or else up to the
+# first sentence stop. Live records title a measure by its CatchLine first.
+RECORD_TITLE_TO_SESSION: Final = re.compile(
+    r"\brecord\s+for\s+[A-Z]{1,4}\s?\d{1,5}\s*,\s*(.+?)"
+    r"(?=,\s*in\s+the\s+(?:\d{4}[RS]\d|\d{4}\s+(?:(?:first|second|third|fourth)\s+)?"
+    r"(?:regular|special))\b)",
+    re.IGNORECASE,
+)
+RECORD_TITLE_TO_STOP: Final = re.compile(
+    r"\brecord\s+for\s+[A-Z]{1,4}\s?\d{1,5}\s*,\s*(.+?)(?=\.(?:\s|$)|$)",
+    re.IGNORECASE,
+)
+SUBJECT_STOPWORDS: Final = frozenset(
+    {"a", "an", "and", "as", "by", "for", "in", "of", "on", "or", "the", "to", "with"}
+)
 
 # The tier of a source whose content has not passed the hollow-source checks.
 UNCHECKED_TIER: Final = "tier_4_unverified"
@@ -255,6 +296,141 @@ def states_record(record: Pdx1Record, page: PageContent) -> bool:
     return not wanted or any(item.search(page.text) for item in wanted)
 
 
+def _host_is(host: str, domain: str) -> bool:
+    return host == domain or host.endswith("." + domain)
+
+
+def subject_domain_for(record: Pdx1Record) -> str:
+    """washington_civic for a lead whose source is on pdc.wa.gov, else oregon_civic.
+
+    Both the human url and the evidence_url count, so a WA PDC receipt sealed
+    from its data.wa.gov row keeps the Washington domain of its pdc.wa.gov link.
+    """
+    for url in (record.url, record.evidence_url):
+        if url and any(_host_is(_host(url), host) for host in WASHINGTON_HOSTS):
+            return WASHINGTON_DOMAIN
+    return SUBJECT_DOMAIN
+
+
+def is_olis_url(url: str) -> bool:
+    return _host_is(_host(url), OLIS_HOST)
+
+
+def record_subject(text: str) -> str | None:
+    """The subject of the first "Relating to" clause in text, or None."""
+    match = RELATING_TO.search(normalize_whitespace(text))
+    if match is None:
+        return None
+    return match.group(1).strip(" ,").lower() or None
+
+
+def record_session(text: str) -> str | None:
+    """The OLIS session key the text names: "2026 Regular session" is 2026R1."""
+    match = SESSION_NAME.search(text)
+    if match is not None:
+        year, ordinal, kind = match.groups()
+        number = SESSION_ORDINALS[ordinal.lower()] if ordinal else 1
+        return f"{year}{'R' if kind.lower() == 'regular' else 'S'}{number}"
+    key = SESSION_KEY.search(text)
+    return key.group(1) if key else None
+
+
+def record_title(text: str) -> str | None:
+    """The record's title (its CatchLine for live OLIS records), or None."""
+    flat = normalize_whitespace(text)
+    match = RECORD_TITLE_TO_SESSION.search(flat) or RECORD_TITLE_TO_STOP.search(flat)
+    if match is None:
+        return None
+    title = match.group(1).strip(" ,.")
+    if re.match(r"in\s+the\s", title, re.IGNORECASE) and record_session(title):
+        return None  # "OLIS record for HB 4092, in the 2026 Regular session."
+    return title or None
+
+
+def _folded(text: str) -> str:
+    return normalize_whitespace(text).lower()
+
+
+def url_session(url: str) -> str | None:
+    """The session key in an OLIS URL: /liz/2025R1/... or ('2026R1')."""
+    match = SESSION_KEY.search(httpx.URL(url).path)
+    return match.group(1) if match else None
+
+
+def _subject_words(subject: str) -> set[str]:
+    words = set(re.findall(r"[a-z0-9]+", subject.lower())) - SUBJECT_STOPWORDS
+    return {w[:-1] if len(w) > 3 and w.endswith("s") else w for w in words}
+
+
+def subjects_match(ours: str, theirs: str) -> bool:
+    """Whether two "Relating to" subjects are the same subject.
+
+    The rule is deliberately strict. Each subject is lowercased, split into
+    words, stripped of stopwords (a, the, of, to, ...) and singularised by
+    dropping one trailing "s" from words longer than three letters. The
+    subjects match only when the smaller word set is non-empty and every one of
+    its words is in the larger set. So "child safety system" matches "child
+    safety systems" and "taxes" matches "taxes; prescribing an effective date",
+    but subjects that share only some words, or none, do not match.
+    """
+    mine, other = _subject_words(ours), _subject_words(theirs)
+    smaller, larger = sorted((mine, other), key=len)
+    return bool(smaller) and smaller <= larger
+
+
+def olis_mismatch_reason(
+    record: Pdx1Record, final_url: str, text: str, page: PageContent | None
+) -> str | None:
+    """Why an OLIS source is not the record's measure, or None if it may be.
+
+    Applies when the record's source URL or the URL the fetch ended at is on
+    oregonlegislature.gov (olis., api.). The record's subject and session come
+    from its pattern ("Relating to ..., in the 2026 Regular session"). The
+    source's subject is the first "Relating to" clause of the page's visible
+    content (its bill title), or of the raw text for a non-HTML answer (the
+    API's RelatingTo). The source's session is the key in each OLIS URL
+    (/liz/2026R1/...), which must equal the record's.
+
+    The session check always applies: a record or URL that names no session
+    cannot be checked, so the source is rejected.
+
+    The subject check depends on what the record states. A record with a
+    "Relating to" subject is matched against the source's (subjects_match).
+    Live pdx-1i OLIS records instead take their title from the measure's
+    CatchLine ("Prohibits a retailer ..."), a plain sentence that is not the
+    bill's RelatingTo. For those, the record's title must appear verbatim, up
+    to whitespace and case, in the page's visible main content (the overview
+    shows it as "Catchline/Summary: ...") or in the raw text of a non-HTML
+    answer. A record that states neither a subject nor a title is rejected.
+    """
+    urls = [url for url in (record.source_url, final_url) if url and is_olis_url(url)]
+    if not urls:
+        return None
+    session = record_session(record.pattern)
+    if session is None:
+        return "is an OLIS source but the record states no session to check"
+    for url in urls:
+        served = url_session(url)
+        if served is None:
+            return "is an OLIS source whose URL names no session"
+        if served != session:
+            return f"is session {served}, not the record's session {session}"
+    ours = record_subject(record.pattern)
+    if ours is None:
+        title = record_title(record.pattern)
+        if title is None:
+            return "is an OLIS source but the record states no subject to check"
+        if _folded(title) not in _folded(page.text if page is not None else text):
+            return f"does not state the record's title {title!r} (subject mismatch)"
+        return None
+    theirs = record_subject(page.text if page is not None else text)
+    if theirs is None:
+        return "is an OLIS source that states no subject"
+    if not subjects_match(ours, theirs):
+        return f"states subject {theirs!r}, not the record's {ours!r}"
+    return None
+
+
 def hollow_source_reason(
     record: Pdx1Record, final_url: str, text: str, page: PageContent | None
 ) -> str | None:
@@ -262,7 +438,8 @@ def hollow_source_reason(
 
     page is the HTML page's visible main content, or None for JSON, PDF or plain
     text. evidence_url payloads are JSON rows that pdx-1i fetched by the
-    record's own id, so only the empty answer applies to them.
+    record's own id, so only the empty answer applies to them, plus the OLIS
+    subject and session check for an oregonlegislature.gov API answer.
     """
     if is_landing_page(final_url):
         return "is a landing page"
@@ -271,13 +448,13 @@ def hollow_source_reason(
     if is_empty_answer(text):
         return "is an empty answer"
     if page is None:
-        return None
+        return olis_mismatch_reason(record, final_url, text, None)
     reason = hollow_page_reason(page)
     if reason is not None:
         return reason
     if not states_record(record, page):
         return "does not state the record's identifier"
-    return None
+    return olis_mismatch_reason(record, final_url, text, page)
 
 
 def _optional_text(raw: dict[str, Any], name: str) -> str:
@@ -551,6 +728,7 @@ def import_pdx1_signals(
                     "kind": ARTIFACT_KIND,
                     "content_type": receipt["content_type"],
                     "engine": "pdx-1i",
+                    "subject_domain": subject_domain_for(record),
                     "pdx1_record_id": record.record_id,
                     "source_type": record.source_type,
                     "pdx1_tier": record.tier,

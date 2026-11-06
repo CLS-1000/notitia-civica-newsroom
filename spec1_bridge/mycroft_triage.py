@@ -44,6 +44,7 @@ from spec1_bridge.adapters.seldon_civic import SeldonCivicAdapter
 from spec1_bridge.adapters.ubik_oregon import UbikOregonAdapter
 from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
 from spec1_bridge.moby_runner import INSERT_SOURCE, Connection, allocate_source_id
+from spec1_bridge.pdx1_importer import SUBJECT_DOMAIN as PDX1_DOMAIN
 from spec1_bridge.pdx1_importer import import_pdx1_signals
 from spec1_bridge.proc_track_importer import (
     ProcTrackError,
@@ -320,8 +321,13 @@ def triage_packets(
     conn: Connection,
     enricher: OllamaEnricher,
     now: datetime | None = None,
+    domain_for: Callable[[Spec1LeadPacket], str] | None = None,
 ) -> TriageReport:
-    """Gate each packet, then enrich and write the ones that pass."""
+    """Gate each packet, then enrich and write the ones that pass.
+
+    subject_domain is the batch's domain; domain_for, when given, picks a
+    packet's own domain instead (pdx-1i mixes Oregon and Washington leads).
+    """
     moment = now if now is not None else datetime.now(UTC)
     report = TriageReport()
     seen: set[str] = set()
@@ -334,7 +340,8 @@ def triage_packets(
                 TriageRejection(packet.lead_id, failed.gate, failed.reason)
             )
             continue
-        _write_record(conn, packet, subject_domain, gates, enricher.enrich(packet))
+        domain = domain_for(packet) if domain_for is not None else subject_domain
+        _write_record(conn, packet, domain, gates, enricher.enrich(packet))
         report.written.append(packet.lead_id)
     return report
 
@@ -368,6 +375,15 @@ def _known_lead(conn: Connection) -> Callable[[str], bool]:
     return is_known
 
 
+def packet_subject_domain(packet: Spec1LeadPacket, default: str) -> str:
+    """The subject_domain the importer set on the packet's artifacts, or default."""
+    for artifact in packet.source_artifacts:
+        domain = artifact.metadata.get("subject_domain")
+        if isinstance(domain, str) and domain:
+            return domain
+    return default
+
+
 def run_pdx1(
     store_path: str, min_priority: str, conn: Connection, enricher: OllamaEnricher
 ) -> TriageReport:
@@ -380,7 +396,13 @@ def run_pdx1(
     )
     for error in imported.errors:
         logger.warning("pdx-1i: %s", error)
-    return triage_packets(imported.packets, "oregon_civic", conn, enricher)
+    return triage_packets(
+        imported.packets,
+        PDX1_DOMAIN,
+        conn,
+        enricher,
+        domain_for=lambda packet: packet_subject_domain(packet, PDX1_DOMAIN),
+    )
 
 
 def run_spec1(
