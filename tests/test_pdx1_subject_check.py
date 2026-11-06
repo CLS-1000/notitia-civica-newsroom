@@ -23,6 +23,7 @@ import httpx
 import psycopg
 import pytest
 
+from newsroom.harlan_eternity.custody import fetch_and_seal_source
 from spec1_bridge import mycroft_triage, pdx1_importer
 from spec1_bridge.contracts import Spec1LeadPacket
 from spec1_bridge.mycroft_triage import (
@@ -393,10 +394,10 @@ def test_washington_domain_reaches_triage_records(
             200, headers={"content-type": HTML}, content=pages[str(request.url)]
         )
 
-    real_seal = pdx1_importer.fetch_and_seal_source
-
     def offline_seal(*args: Any, **kwargs: Any) -> Any:
-        return real_seal(*args, **{**kwargs, "transport": httpx.MockTransport(handler)})
+        return fetch_and_seal_source(
+            *args, **{**kwargs, "transport": httpx.MockTransport(handler)}
+        )
 
     monkeypatch.setattr(pdx1_importer, "fetch_and_seal_source", offline_seal)
     report = mycroft_triage.run_pdx1(str(store), "ELEVATED", db, _OfflineEnricher())
