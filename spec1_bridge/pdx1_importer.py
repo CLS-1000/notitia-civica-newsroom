@@ -29,17 +29,27 @@ evidence bar, because pdx-1i derived them by correlation and no filed record
 states them. A record whose sealed source has no readable text is skipped,
 never given an invented excerpt. Every packet is analysis_tier='rule_based'.
 
-A sealed page that cannot be about its record is skipped as a hollow source:
-a known search form or landing page (checked against the URL asked for and the
-URL the fetch ended at), or one page sealed for two different records in the
-same run when the page does not state either record's own pattern. Such a page holds text, so it would pass the verbatim check, but it
-does not state the record.
+A sealed page that cannot be about its record is skipped as a hollow source.
+Such a page holds text, so it would pass the verbatim check, but it does not
+state the record. A source is hollow when:
+
+- its URL is a known search form or landing page (checked against the URL asked
+  for and the URL the fetch ended at), or it carries a host's search-form marker;
+- it is an empty answer (Socrata's `[]` for an unknown id);
+- the visible main content of an HTML page, read by spec1_bridge.page_content
+  and never the raw markup, shows nothing, shows a not-found or not-released
+  notice, is a search form or is a list of links;
+- the record's pattern names an identifier (a transaction, receipt or filing
+  number, or a bill number) and the page's visible content never states it;
+- one page is sealed for two different records in the same run and does not
+  state either record's own pattern.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from collections import Counter
 from collections.abc import Callable
@@ -63,6 +73,12 @@ from spec1_bridge.adapters.base_lazlong import (
     render_prompt,
 )
 from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
+from spec1_bridge.page_content import (
+    PageContent,
+    hollow_page_reason,
+    looks_like_html,
+    read_main_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +96,8 @@ POINTS_PER_SIGMA: Final = 20.0
 RECORD_TIERS: Final = frozenset({"HARD_RECORD", "REPORTED", "INFERRED"})
 PUBLIC_ORIGINS: Final = frozenset({"live", "cache"})
 EXCERPT_CHARS: Final = 300
+# A text run this long reads as a sentence of the record, not a label or a menu.
+MIN_EXCERPT_WORDS: Final = 8
 
 # Pages that list or search filings rather than state one. Seen on Kali
 # 2026-11-01: ORESTAR transaction links without a session land on the search
@@ -95,6 +113,17 @@ LANDING_PAGES: Final = frozenset(
 SEARCH_FORM_MARKERS: Final = {
     "secure.sos.state.or.us": "cneSearchForm",
 }
+
+# Identifiers a pdx-1i pattern names its record by: ORE-2026-4417392 (ORESTAR),
+# WA-2026-778341 (WA PDC), SEI-2026-00871 (OGEC), and Oregon measure numbers.
+RECORD_NUMBER: Final = re.compile(r"\b([A-Z]{2,5})-(\d{4})-(\d{3,})\b")
+MEASURE_NUMBER: Final = re.compile(
+    r"\b(HB|SB|HJR|SJR|HCR|SCR|HJM|SJM|HM|SM)\s?(\d{1,4})\b"
+)
+MEASURE_NAMES: Final = {"HB": "House Bill", "SB": "Senate Bill"}
+
+# The tier of a source whose content has not passed the hollow-source checks.
+UNCHECKED_TIER: Final = "tier_4_unverified"
 
 # Hosts that publish filed public records. Anything else is secondary.
 PRIMARY_HOSTS: Final = (
@@ -154,12 +183,30 @@ def _host(url: str) -> str:
 
 
 def classify_source_tier(url: str) -> str:
-    """Tier of the source document, by the host that published it."""
+    """The highest tier a document from this host can have.
+
+    A ceiling, not a grade: pdx-1i sources take their tier from
+    assign_source_tier, which also needs the content checks to pass.
+    """
     host = _host(url)
     for primary in PRIMARY_HOSTS:
         if host == primary or host.endswith("." + primary):
             return "tier_1_primary"
     return "tier_3_secondary"
+
+
+def assign_source_tier(source_url: str, final_url: str, hollow: str | None) -> str:
+    """The tier a sealed pdx-1i source earns: its host's, only if its content passed.
+
+    A hollow source (hollow is hollow_source_reason's answer) is
+    tier_4_unverified whatever its host, so an error page on a primary host can
+    never reach triage as tier_1_primary even if it were not skipped. A fetch
+    that ended on another host takes the lower of the two hosts' tiers.
+    """
+    if hollow is not None:
+        return UNCHECKED_TIER
+    asked, served = classify_source_tier(source_url), classify_source_tier(final_url)
+    return asked if asked == served else "tier_3_secondary"
 
 
 def is_landing_page(url: str) -> bool:
@@ -178,6 +225,59 @@ def is_empty_answer(text: str) -> bool:
 def is_search_form(url: str, text: str) -> bool:
     marker = SEARCH_FORM_MARKERS.get(_host(url))
     return marker is not None and marker in text
+
+
+def record_identifiers(pattern: str) -> list[re.Pattern[str]]:
+    """What a page must say to be about the record the pattern describes.
+
+    A record number matches in full or by its final number on its own, since a
+    filing page may show 4417392 for ORE-2026-4417392. A measure matches as
+    HB 4092, HB4092 or House Bill 4092.
+    """
+    found: list[re.Pattern[str]] = []
+    for prefix, year, number in RECORD_NUMBER.findall(pattern):
+        found.append(
+            re.compile(
+                rf"\b{prefix}-{year}-{number}\b|(?<![\d-]){number}(?!\d)", re.IGNORECASE
+            )
+        )
+    for prefix, number in MEASURE_NUMBER.findall(pattern):
+        names = "|".join(
+            re.escape(name) for name in (prefix, MEASURE_NAMES.get(prefix)) if name
+        )
+        found.append(re.compile(rf"\b(?:{names})\s?{number}\b", re.IGNORECASE))
+    return found
+
+
+def states_record(record: Pdx1Record, page: PageContent) -> bool:
+    """The page's visible content names the record, when the pattern names one."""
+    wanted = record_identifiers(record.pattern)
+    return not wanted or any(item.search(page.text) for item in wanted)
+
+
+def hollow_source_reason(
+    record: Pdx1Record, final_url: str, text: str, page: PageContent | None
+) -> str | None:
+    """Why a sealed source cannot state its record, or None if it may.
+
+    page is the HTML page's visible main content, or None for JSON, PDF or plain
+    text. evidence_url payloads are JSON rows that pdx-1i fetched by the
+    record's own id, so only the empty answer applies to them.
+    """
+    if is_landing_page(final_url):
+        return "is a landing page"
+    if is_search_form(final_url, text):
+        return "is a search form"
+    if is_empty_answer(text):
+        return "is an empty answer"
+    if page is None:
+        return None
+    reason = hollow_page_reason(page)
+    if reason is not None:
+        return reason
+    if not states_record(record, page):
+        return "does not state the record's identifier"
+    return None
 
 
 def _optional_text(raw: dict[str, Any], name: str) -> str:
@@ -256,15 +356,49 @@ def lead_id_for(record: Pdx1Record) -> str:
     return str(uuid.uuid5(PDX1_NAMESPACE, record.record_id))
 
 
-def pick_excerpt(record: Pdx1Record, text: str) -> str:
-    """The record's own pattern text if the source states it, else the source's opening.
+def _clip(text: str) -> str:
+    """At most EXCERPT_CHARS, cut at a word boundary. Still a span of text."""
+    if len(text) <= EXCERPT_CHARS:
+        return text
+    cut = text[:EXCERPT_CHARS]
+    return (cut.rsplit(" ", 1)[0] if " " in cut else cut).strip()
 
-    Either way the excerpt is a span of the sealed source, so it passes the
-    corroboration gate's verbatim check honestly.
+
+def pick_excerpt(record: Pdx1Record, text: str, page: PageContent | None = None) -> str:
+    """The record's own pattern text if the source states it, else a span of its body.
+
+    For an HTML page (page is its visible main content) the excerpt is one raw
+    text run of that content: never <head>, <script>, <style>, nav, link or
+    form-control text. The first run long enough to read as a sentence is used,
+    preferring one that names the record's identifier, else the longest run. A run holds no markup
+    or character references, so it is a verbatim span of the sealed payload,
+    which is what the corroboration gate (excerpt_is_verbatim on the payload)
+    and the grounding gate (normalize_text on source_registry.verbatim_text)
+    compare against. Returns "" if no span qualifies; the lead then fails the
+    evidence bar rather than carry boilerplate.
+
+    Other payloads (JSON rows, PDF text, plain text) have no boilerplate, so
+    their excerpt is the opening of the text, as before.
     """
-    if record.pattern and excerpt_is_verbatim(record.pattern, text):
+    pattern_stated = bool(record.pattern) and excerpt_is_verbatim(record.pattern, text)
+    if page is None:
+        if pattern_stated:
+            return record.pattern
+        return normalize_whitespace(text)[:EXCERPT_CHARS].strip()
+
+    if pattern_stated and normalize_whitespace(record.pattern) in page.text:
         return record.pattern
-    return normalize_whitespace(text)[:EXCERPT_CHARS].strip()
+    sentences = [run for run in page.text_runs if len(run.split()) >= MIN_EXCERPT_WORDS]
+    wanted = record_identifiers(record.pattern)
+    naming = [run for run in sentences if any(item.search(run) for item in wanted)]
+    candidates = naming or sentences
+    if not candidates:
+        # A short record page: its longest body run, still never boilerplate.
+        candidates = sorted(page.text_runs, key=len, reverse=True)[:1]
+    if not candidates:
+        return ""
+    excerpt = _clip(candidates[0])
+    return excerpt if excerpt_is_verbatim(excerpt, text) else ""
 
 
 def build_prompt(record: Pdx1Record, artifact: SourceArtifact) -> str:
@@ -369,12 +503,13 @@ def import_pdx1_signals(
                 continue
             seen.add(lead_id)
 
-            tier = classify_source_tier(source_url)
+            # Nothing about the content is known yet, so the blob is sealed as
+            # unverified; the artifact's tier is decided after the checks.
             try:
                 receipt = fetch_and_seal_source(
                     source_url,
                     allocate_source_id(),
-                    tier,
+                    UNCHECKED_TIER,
                     archive_dir=archive_dir,
                     transport=transport,
                 )
@@ -393,15 +528,16 @@ def import_pdx1_signals(
                 result.skipped["no_source_text"] += 1
                 continue
             final_url = receipt["final_url"]
-            if (
-                is_landing_page(final_url)
-                or is_search_form(final_url, text)
-                or is_empty_answer(text)
-            ):
+            page = (
+                read_main_content(text)
+                if looks_like_html(text, receipt["content_type"])
+                else None
+            )
+            hollow = hollow_source_reason(record, final_url, text, page)
+            tier = assign_source_tier(source_url, final_url, hollow)
+            if hollow is not None:
                 result.skipped["hollow_source"] += 1
-                result.errors.append(
-                    f"{record.record_id}: {final_url} is a search or landing page"
-                )
+                result.errors.append(f"{record.record_id}: {final_url} {hollow}")
                 continue
 
             artifact = SourceArtifact(
@@ -426,7 +562,7 @@ def import_pdx1_signals(
                     ),
                 },
             )
-            excerpt = pick_excerpt(record, text)
+            excerpt = pick_excerpt(record, text, page)
             result.packets.append(
                 Spec1LeadPacket(
                     lead_id=lead_id,
