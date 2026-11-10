@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One record on the wire between ecosystem components.",
+  "properties": {
+    "created_at": {
+      "description": "When the producer made the record, with a UTC offset. Offsets other than UTC are accepted and normalized to UTC.",
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "description": "The record itself. Its shape belongs to the producer and the record_type, not to this envelope.",
+      "title": "Payload",
+      "type": "object"
+    },
+    "producer": {
+      "description": "The component that made the record.",
+      "enum": [
+        "spec-1",
+        "pdx-1i",
+        "notitia-civica",
+        "newsroom",
+        "gatepost",
+        "proc_track"
+      ],
+      "title": "Producer",
+      "type": "string"
+    },
+    "record_id": {
+      "description": "The producer's own stable ID for the record. A producer that re-sends a record sends the same ID.",
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Record Id",
+      "type": "string"
+    },
+    "record_type": {
+      "description": "What the payload is, in snake_case, such as 'intelligence', 'campaign_finance', 'chamber_flow' or 'brief'.",
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "Record Type",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "description": "Envelope format version. Only '1' exists; a consumer must refuse any other value.",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "producer",
+    "record_type",
+    "record_id",
+    "created_at",
+    "payload"
+  ],
+  "title": "ExchangeEnvelope",
+  "type": "object"
+}
