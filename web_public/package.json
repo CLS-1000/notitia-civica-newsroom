@@ -21,10 +21,9 @@
     "@types/node": "^26.6.6",
     "pa11y-ci": "^5.0.0",
     "stylelint": "^17.16.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.3"
   },
   "allowScripts": {
-    "puppeteer@24.43.1": true,
-    "typescript": "^5.9.3"
+    "puppeteer@24.43.1": true
   }
 }
