@@ -449,6 +449,8 @@ def test_lead_packet_contract_defaults_to_rule_based(tmp_path: Path) -> None:
         "verbatim_excerpts",
         "paste_ready_prompt",
         "analysis_tier",
+        "public_question",
+        "public_interest_reason",
     ]
     assert packet(tmp_path).analysis_tier == "rule_based"
 

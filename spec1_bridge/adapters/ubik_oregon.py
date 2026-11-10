@@ -264,6 +264,22 @@ class UbikOregonAdapter(LazLongAdapter):
             for item in artifacts
         )
 
+    def default_public_question(self, record: dict[str, Any]) -> str:
+        measure_id = record["measure_id"]
+        if record.get("gut_and_stuff"):
+            return (
+                f"Why was the relating clause of Oregon {measure_id} replaced, and "
+                "what does the measure do now?"
+            )
+        relating = record["measure"].get("RelatingTo") or "this measure"
+        return f"What would Oregon {measure_id} ({relating}) change, and at what cost?"
+
+    def default_public_interest_reason(self, record: dict[str, Any]) -> str:
+        return (
+            "A measure before the Oregon Legislature can change state law, and its "
+            "fiscal statement shows the public money at stake."
+        )
+
     def build_paste_ready_prompt(
         self, record: dict[str, Any], artifacts: list[SourceArtifact]
     ) -> str:

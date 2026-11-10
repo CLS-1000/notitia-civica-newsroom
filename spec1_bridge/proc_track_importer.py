@@ -40,7 +40,7 @@ from newsroom.harlan_eternity.custody import (
     validate_source_id,
 )
 from spec1_bridge.adapters.base_lazlong import render_prompt
-from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
+from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket, public_interest
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +256,20 @@ def lead_id_for(session: str, measure: str, kind: str, row: dict[str, Any]) -> s
     return str(uuid.uuid5(PROC_TRACK_NAMESPACE, key))
 
 
+def public_interest_for(
+    session: str, measure: str, outcome: Outcome, payload: dict[str, Any]
+) -> tuple[str, str]:
+    """Return the replay's own question and reason, else neutral defaults."""
+    return public_interest(
+        payload.get("public_question"),
+        payload.get("public_interest_reason"),
+        f"How did Oregon {measure} reach this outcome in {session}: "
+        f"{outcome.label[0].lower()}{outcome.label[1:]}?",
+        "How a measure passes, fails, or is vetoed shows how the Legislature and "
+        "the Governor are using their power over Oregon law.",
+    )
+
+
 def build_prompt(
     session: str,
     measure: str,
@@ -364,6 +378,7 @@ def import_proc_track(
                 "data_corrections": item.payload.get("data_corrections", []),
             },
         )
+        question, reason = public_interest_for(session, measure, outcome, item.payload)
         result.packets.append(
             Spec1LeadPacket(
                 lead_id=lead_id,
@@ -377,6 +392,8 @@ def import_proc_track(
                     session, measure, outcome, row, states, artifact
                 ),
                 analysis_tier="rule_based",
+                public_question=question,
+                public_interest_reason=reason,
             )
         )
 

@@ -36,6 +36,14 @@
     <div class="receipt">
       <h2>Why this was flagged</h2>
       {% if lead %}
+      {% set question = lead.public_question or article.public_question %}
+      {% set reason = lead.public_interest_reason or article.public_interest_reason %}
+      <dl class="public-interest">
+        <dt>Core Question</dt>
+        <dd data-field="public_question">{% if question %}{{ question }}{% else %}<span class="muted">Not stated by the lead. Write it before drafting further.</span>{% endif %}</dd>
+        <dt>Public Interest Reason</dt>
+        <dd data-field="public_interest_reason">{% if reason %}{{ reason }}{% else %}<span class="muted">Not stated by the lead.</span>{% endif %}</dd>
+      </dl>
       <p>Anomaly score <span class="score">{{ '%.1f' % lead.anomaly_score }}</span></p>
       {% for gate in lead.decomposition_receipt.get('gates', []) %}
       <div class="muted">{{ '✓' if gate.passed else '✕' }} {{ gate.gate }} {{ gate.reason }}</div>
@@ -96,7 +104,6 @@
         {% endfor %}
       </div>
       <label><input type="checkbox" name="is_private_person"{% if article.is_private_person %} checked{% endif %}> Story concerns a private person</label>
-      <label><input type="checkbox" name="right_of_reply_logged"{% if article.right_of_reply_logged %} checked{% endif %}> Right of reply logged</label>
       <label>Uncertainty disclosures (one per line: what is unknown or unverified)
         <textarea name="uncertainty_disclosures" class="disclosures">{{ article.uncertainty_disclosures | join("\n") }}</textarea>
       </label>

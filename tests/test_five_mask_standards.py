@@ -13,6 +13,18 @@ import pytest
 from conftest import Conn
 from fastapi.testclient import TestClient
 from psycopg import errors
+from test_pdx1_importer import _record as pdx1_raw
+from test_phase1_adapters import (
+    congress_router,
+    delos,
+    delos_router,
+    olis_router,
+    ollama,
+    seldon,
+    triage,
+    ubik,
+)
+from test_phase1_adapters import packet as lead_packet
 from test_phase2_workstation import (
     BASE_URL,
     NOW,
@@ -24,6 +36,7 @@ from test_phase2_workstation import (
     sign,
 )
 from test_phase3_export import export
+from test_spec1_importer import _record as spec1_raw
 
 from newsroom.dors_venabili.gatekeeper import (
     verify_right_of_reply_log,
@@ -36,7 +49,10 @@ from newsroom.harlan_eternity.signoff import (
     record_correction,
 )
 from newsroom.penfield_desk.app import create_app
+from spec1_bridge import pdx1_importer, proc_track_importer, spec1_importer
 from spec1_bridge.confidence import format_icd203_confidence
+from spec1_bridge.contracts import public_interest
+from spec1_bridge.mycroft_triage import run_adapter
 
 SLUG = "budget-shortfall"
 ORIGINAL = "County records list 14 closed sites."
@@ -906,3 +922,256 @@ def test_expired_pending_reply_reads_as_no_response() -> None:
 def test_article_without_replies_exports_an_empty_list(db: Conn) -> None:
     published(db)
     assert export.collect_articles(db)[0][0]["replies"] == []
+
+
+# --- Public-interest question ------------------------------------------------------
+
+
+def test_public_interest_prefers_the_raw_record() -> None:
+    assert public_interest(
+        "  Who  pays? ", "Taxpayers do.", "Default?", "Default."
+    ) == (
+        "Who pays?",
+        "Taxpayers do.",
+    )
+
+
+@pytest.mark.parametrize("raw", [None, "", "   ", 42])
+def test_public_interest_falls_back_field_by_field(raw: object) -> None:
+    assert public_interest("Who pays?", raw, "Default?", "Default reason.") == (
+        "Who pays?",
+        "Default reason.",
+    )
+    assert public_interest(raw, raw, "Default?", "Default reason.") == (
+        "Default?",
+        "Default reason.",
+    )
+
+
+def test_each_adapter_writes_a_public_question(
+    db: Conn, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    enricher, _ = ollama()
+    for adapter in (
+        ubik(tmp_path, olis_router()),
+        seldon(tmp_path, congress_router()),
+        delos(tmp_path, delos_router()),
+    ):
+        run_adapter(adapter, db, enricher)
+    rows: dict[str, tuple[str, str]] = dict(
+        db.execute(
+            """
+            SELECT adapter_name, (public_question, public_interest_reason)
+            FROM triage_records
+            """
+        ).fetchall()
+    )
+    assert set(rows) == {"ubik_oregon", "seldon_civic", "delos_econ"}
+    for name, (question, reason) in rows.items():
+        assert question.endswith("?"), name
+        assert reason.endswith("."), name
+    assert rows["ubik_oregon"][0].startswith("What would Oregon ")
+    assert rows["seldon_civic"][0].startswith("What does ")
+    assert "change in federal law?" in rows["seldon_civic"][0]
+
+
+def test_adapter_uses_a_question_stated_in_the_raw_record(tmp_path: Path) -> None:
+    adapter = ubik(tmp_path, olis_router())
+    record = {
+        "public_question": "Who wrote this amendment?",
+        "measure_id": "HB 1",
+        "measure": {},
+    }
+    question, reason = adapter.public_interest_for(record)
+    assert question == "Who wrote this amendment?"
+    assert reason.startswith("A measure before the Oregon Legislature")
+
+
+def test_gut_and_stuff_measures_ask_about_the_replacement(tmp_path: Path) -> None:
+    adapter = ubik(tmp_path, olis_router())
+    record = {"measure_id": "SB 5", "measure": {}, "gut_and_stuff": True}
+    assert adapter.default_public_question(record) == (
+        "Why was the relating clause of Oregon SB 5 replaced, and what does the "
+        "measure do now?"
+    )
+
+
+def test_delos_questions_follow_the_signal(tmp_path: Path) -> None:
+    adapter = delos(tmp_path, delos_router())
+    drop = {"kind": "chokepoint_drop", "port_name": "Panama Canal", "divergence": -0.42}
+    assert adapter.default_public_question(drop) == (
+        "Why did ship transits through Panama Canal fall 42%, and what could the "
+        "drop disrupt?"
+    )
+    recall = {"kind": "bottleneck", "generic": "amoxicillin", "recall_number": "D-1"}
+    assert adapter.default_public_question(recall) == (
+        "Could patients lose access to amoxicillin after recall D-1?"
+    )
+
+
+def test_pdx1_defaults_name_the_record_and_state() -> None:
+    record = pdx1_importer.parse_record(json.dumps(pdx1_raw()))
+    question, reason = pdx1_importer.public_interest_for(record)
+    assert question == (
+        f"What does ORESTAR record {record.record_id} show"
+        + (f" about {', '.join(record.entity_ids)}" if record.entity_ids else "")
+        + ", and does the sealed source support it?"
+    )
+    assert "Oregon officials" in reason
+
+
+def test_pdx1_keeps_telemetry_questions() -> None:
+    raw = pdx1_raw(public_question="Who funded Committee X?", public_interest_reason="")
+    record = pdx1_importer.parse_record(json.dumps(raw))
+    question, reason = pdx1_importer.public_interest_for(record)
+    assert question == "Who funded Committee X?"
+    assert reason.startswith("It is a public record of how Oregon")
+
+
+def test_spec1_default_does_not_repeat_the_hypothesis() -> None:
+    raw = spec1_raw(hypothesis="The agency hid a recall.")
+    record = spec1_importer.parse_record(json.dumps(raw))
+    question, _reason = spec1_importer.public_interest_for(record)
+    assert question == (
+        "Does the sealed source from congress_gov support what spec-1 flagged?"
+    )
+    assert "hid a recall" not in question
+
+
+def test_spec1_keeps_telemetry_questions() -> None:
+    raw = spec1_raw(public_question="Did the agency delay the recall?")
+    record = spec1_importer.parse_record(json.dumps(raw))
+    assert spec1_importer.public_interest_for(record)[0] == (
+        "Did the agency delay the recall?"
+    )
+
+
+def test_proc_track_default_states_the_outcome() -> None:
+    outcome = proc_track_importer.NOTABLE_RULES["governor_vetoed"]
+    question, reason = proc_track_importer.public_interest_for(
+        "2025R1", "HB 2001", outcome, {}
+    )
+    assert (
+        question
+        == "How did Oregon HB 2001 reach this outcome in 2025R1: vetoed by the Governor?"
+    )
+    assert "Governor" in reason
+    overridden = proc_track_importer.public_interest_for(
+        "2025R1", "HB 2001", outcome, {"public_question": "Why the veto?"}
+    )
+    assert overridden[0] == "Why the veto?"
+
+
+def test_triage_persists_the_question(db: Conn, tmp_path: Path) -> None:
+    triage(
+        [
+            lead_packet(
+                tmp_path,
+                public_question=" Who pays for HB 1? ",
+                public_interest_reason="It raises fees statewide.",
+            )
+        ],
+        db,
+    )
+    row = db.execute(
+        "SELECT public_question, public_interest_reason FROM triage_records"
+    ).fetchone()
+    assert row == ("Who pays for HB 1?", "It raises fees statewide.")
+
+
+def test_triage_without_a_question_stores_blank(db: Conn, tmp_path: Path) -> None:
+    triage([lead_packet(tmp_path)], db)
+    row = db.execute(
+        "SELECT public_question, public_interest_reason FROM triage_records"
+    ).fetchone()
+    assert row == ("", "")
+
+
+QUESTION = "Why is the program short $3.6 million?"
+REASON = "The shortfall closes sites residents rely on."
+
+
+def test_desk_shows_the_question_on_the_lead(desk: TestClient, db: Conn) -> None:
+    seed(db)
+    db.execute(
+        "UPDATE triage_records SET public_question = %s, public_interest_reason = %s",
+        (QUESTION, REASON),
+    )
+    page = desk.get(f"/?article={SLUG}").text
+    receipt = page[page.index("Why this was flagged") : page.index("Primary Source")]
+    assert "Core Question" in receipt and QUESTION in receipt
+    assert "Public Interest Reason" in receipt and REASON in receipt
+
+
+def test_desk_says_when_the_lead_has_no_question(desk: TestClient, db: Conn) -> None:
+    seed(db)
+    page = desk.get(f"/?article={SLUG}").text
+    assert "Not stated by the lead" in page
+
+
+def test_draft_copies_the_question_from_its_lead(desk: TestClient, db: Conn) -> None:
+    record = seed(db, slug="other")
+    db.execute("UPDATE articles SET triage_record_id = NULL")
+    db.execute(
+        "UPDATE triage_records SET public_question = %s, public_interest_reason = %s",
+        (QUESTION, REASON),
+    )
+    desk.post(f"/leads/{record}/draft", follow_redirects=False)
+    row = db.execute(
+        """
+        SELECT public_question, public_interest_reason FROM articles
+        WHERE triage_record_id = %s
+        """,
+        (record,),
+    ).fetchone()
+    assert row == (QUESTION, REASON)
+
+
+# --- The old right-of-reply checkbox is gone ------------------------------------------
+
+
+def test_desk_has_no_right_of_reply_checkbox(desk: TestClient, db: Conn) -> None:
+    seed(db)
+    assert 'name="right_of_reply_logged"' not in desk.get(f"/?article={SLUG}").text
+
+
+def test_ticking_the_old_checkbox_cannot_clear_an_allegation(
+    desk: TestClient, db: Conn
+) -> None:
+    seed(db)
+    data = form(
+        body_markdown=BODY_WITH_ALLEGATION,
+        is_private_person="on",
+        right_of_reply_logged="on",
+        no_allegations_attested=None,
+    )
+    html = desk.post(f"/articles/{SLUG}/validate", data=data).text
+    assert "allegation against a private person without right of reply" in html
+
+
+def test_reply_record_clears_the_private_person_allegation(db: Conn) -> None:
+    seed(db, private=True)
+    log_reply(db, "Jane Doe", status="no_response_by_deadline", summary=None)
+    result = sign(
+        db,
+        body_markdown=BODY_WITH_ALLEGATION,
+        no_allegations_attested=False,
+    )
+    assert result["status"] == "published"
+    row = db.execute("SELECT right_of_reply_logged FROM articles").fetchone()
+    assert row == (True,)
+
+
+def test_sign_off_ignores_a_stale_reply_flag(db: Conn) -> None:
+    seed(db, private=True, reply=True)
+    with pytest.raises(SignOffError, match="without right of reply"):
+        sign(db, body_markdown=BODY_WITH_ALLEGATION)
+
+
+BODY_WITH_ALLEGATION = (
+    'The director said "we will restore the program" at a hearing. [S-1]\n\n'
+    "County records list 14 closed sites. [S-2]\n\n"
+    "Jane Doe embezzled funds. [S-1]\n\n"
+    "Audits ran through June. [S-2]"
+)

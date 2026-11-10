@@ -18,6 +18,7 @@ from psycopg.types.json import Jsonb
 
 from newsroom.dors_venabili.gatekeeper import (
     extract_citations,
+    has_reply_record,
     normalize_text,
     run_all_gates,
     verify_right_of_reply_log,
@@ -133,13 +134,14 @@ def _collect_issues(
     if set(extract_citations(body_markdown)) != set(source_ids):
         issues.append("source list does not match the citations in the body")
 
+    replies = load_reply_log(conn, article["article_id"])
     gates = run_all_gates(
         headline=article["headline"],
         body=body_markdown,
         source_texts=texts,
         roles=article["source_roles"],
         is_private_person=article["is_private_person"],
-        right_of_reply_logged=article["right_of_reply_logged"],
+        right_of_reply_logged=has_reply_record(replies),
         badge_type=article["badge_type"],
         source_tiers=tiers,
     )
@@ -153,7 +155,7 @@ def _collect_issues(
     issues.extend(
         f"right_of_reply: {issue}"
         for issue in verify_right_of_reply_log(
-            load_reply_log(conn, article["article_id"]),
+            replies,
             allegation_subjects,
             no_allegations_attested=no_allegations_attested,
             body=body_markdown,
@@ -227,6 +229,10 @@ def _sign(
                 no_open_questions_confirmed = %s,
                 allegation_subjects = %s,
                 no_allegations_attested = %s,
+                right_of_reply_logged = EXISTS (
+                    SELECT 1 FROM article_reply_records
+                    WHERE article_id = articles.article_id
+                ),
                 status = 'published'
             WHERE article_id = %s
             RETURNING article_id, status, analysis_tier, human_approved, published_at

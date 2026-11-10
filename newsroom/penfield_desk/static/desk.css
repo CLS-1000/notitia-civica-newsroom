@@ -54,6 +54,21 @@ h1, h2 {
 .score { color: var(--pf-warn); font-family: var(--pf-font-mono); }
 .muted { color: var(--pf-text-muted); }
 
+.public-interest {
+  margin: 0 0 var(--pf-space-2);
+  padding: var(--pf-space-2);
+  border-left: 3px solid var(--pf-accent);
+  background: var(--pf-bg-input);
+}
+.public-interest dt {
+  color: var(--pf-text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.public-interest dd { margin: 0 0 var(--pf-space-2); font-size: 14px; font-weight: 600; }
+.public-interest dd:last-child { margin-bottom: 0; }
+
 .source { margin-bottom: var(--pf-space-4); }
 .source header { font-family: var(--pf-font-mono); font-size: 12px; }
 

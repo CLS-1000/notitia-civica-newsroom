@@ -299,8 +299,9 @@ def _write_record(
             """
             INSERT INTO triage_records
                 (record_id, adapter_name, subject_domain, anomaly_score,
-                 decomposition_receipt, paste_ready_prompt, source_ids, analysis_tier)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                 decomposition_receipt, paste_ready_prompt, source_ids, analysis_tier,
+                 public_question, public_interest_reason)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 uuid.UUID(packet.lead_id),
@@ -311,6 +312,8 @@ def _write_record(
                 packet.paste_ready_prompt,
                 [item.source_id for item in packet.source_artifacts],
                 ANALYSIS_TIER,
+                packet.public_question.strip(),
+                packet.public_interest_reason.strip(),
             ),
         )
 

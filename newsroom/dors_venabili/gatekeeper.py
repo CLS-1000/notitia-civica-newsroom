@@ -222,7 +222,11 @@ def _home_address_issues(body: str) -> list[str]:
 def scrub_pii_and_defamation(
     body: str, is_private_person: bool, right_of_reply_logged: bool
 ) -> list[str]:
-    """Flag PII, and allegations against private people who had no reply."""
+    """Flag PII, and allegations against private people who had no reply.
+
+    The desk and the sign-off pass right_of_reply_logged from the reply log
+    (has_reply_record), never from a checkbox.
+    """
     issues = [f"possible SSN: {match}" for match in _SSN.findall(body)]
     issues.extend(f"possible phone number: {match}" for match in _PHONE.findall(body))
     issues.extend(_home_address_issues(body))
@@ -336,6 +340,15 @@ _ADVERSE_TERMS: Final = (
     "unlawfully",
 )
 ATTESTATION_LOCKED_BADGES: Final = frozenset({"INVESTIGATION"})
+
+
+def has_reply_record(records: list[dict[str, Any]]) -> bool:
+    """Say whether a right-of-reply request is in the log.
+
+    A request still inside its window counts as logged here; the reply gate
+    holds publication until that window closes.
+    """
+    return bool(records)
 
 
 def adverse_terms(body: str) -> list[str]:

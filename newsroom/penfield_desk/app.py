@@ -32,6 +32,7 @@ from newsroom.dors_venabili.gatekeeper import (
     REPLY_SUBJECT_TYPES,
     GateResult,
     extract_citations,
+    has_reply_record,
     normalize_text,
     run_all_gates,
     split_paragraphs,
@@ -282,13 +283,14 @@ def create_app(
         sources = fetch_sources(conn, article["source_ids"])
         texts = {item["source_id"]: item["text"] for item in sources}
         tiers = {item["source_id"]: item["tier"] for item in sources}
+        replies = load_reply_log(conn, article["article_id"])
         gates: list[GateResult] = run_all_gates(
             headline=str(form.get("headline", "")),
             body=body,
             source_texts=texts,
             roles=roles_from_form(form),
             is_private_person=form.get("is_private_person") == "on",
-            right_of_reply_logged=form.get("right_of_reply_logged") == "on",
+            right_of_reply_logged=has_reply_record(replies),
             badge_type=badge_from_form(form, article),
             source_tiers=tiers,
         )
@@ -306,7 +308,7 @@ def create_app(
                 "right_of_reply",
                 "Right of reply",
                 verify_right_of_reply_log(
-                    load_reply_log(conn, article["article_id"]),
+                    replies,
                     subjects_from_form(form, article),
                     no_allegations_attested=no_allegations_from_form(form),
                     body=body,
@@ -336,7 +338,7 @@ def create_app(
             """
             UPDATE articles
             SET headline = %s, deck = %s, body_markdown = %s, source_roles = %s,
-                badge_type = %s, is_private_person = %s, right_of_reply_logged = %s,
+                badge_type = %s, is_private_person = %s,
                 uncertainty_disclosures = %s, no_open_questions_confirmed = %s,
                 allegation_subjects = %s, no_allegations_attested = %s
             WHERE article_id = %s AND status = ANY(%s::pub_status_enum[])
@@ -348,7 +350,6 @@ def create_app(
                 Jsonb(roles_from_form(form)),
                 badge_from_form(form, article),
                 form.get("is_private_person") == "on",
-                form.get("right_of_reply_logged") == "on",
                 Jsonb(disclosures_from_form(form, article)),
                 confirmed_from_form(form),
                 Jsonb(subjects_from_form(form, article)),
@@ -397,7 +398,8 @@ def create_app(
             leads = cursor.execute(
                 """
                 SELECT t.record_id, t.adapter_name, t.subject_domain, t.anomaly_score,
-                       t.decomposition_receipt, t.source_ids, t.created_at, a.slug
+                       t.decomposition_receipt, t.source_ids, t.created_at,
+                       t.public_question, t.public_interest_reason, a.slug
                 FROM triage_records t
                 LEFT JOIN articles a ON a.triage_record_id = t.record_id
                 ORDER BY t.created_at DESC
@@ -424,7 +426,6 @@ def create_app(
                 "body_markdown": row["body_markdown"],
                 "badge_type": row["badge_type"],
                 "is_private_person": "on" if row["is_private_person"] else "",
-                "right_of_reply_logged": "on" if row["right_of_reply_logged"] else "",
                 "no_open_questions_confirmed": (
                     "on" if row["no_open_questions_confirmed"] else ""
                 ),
@@ -474,8 +475,8 @@ def create_app(
             INSERT INTO articles
                 (slug, section, badge_type, headline, deck, body_markdown,
                  triage_record_id, source_ids, verified_claims,
-                 uncertainty_disclosures)
-            VALUES (%s, %s, 'ANALYSIS', %s, %s, %s, %s, %s, %s, %s)
+                 uncertainty_disclosures, public_question, public_interest_reason)
+            VALUES (%s, %s, 'ANALYSIS', %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 slug,
@@ -487,6 +488,8 @@ def create_app(
                 [source.source_id for source in sources],
                 Jsonb([claim.model_dump() for claim in draft.verified_claims]),
                 Jsonb(draft.uncertainty_disclosures),
+                lead["public_question"],
+                lead["public_interest_reason"],
             ),
         )
         return _go_to(slug)
