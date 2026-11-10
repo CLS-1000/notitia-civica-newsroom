@@ -16,6 +16,48 @@ record it is, its ID, and when it was made. The record itself goes in
 > format and the envelope's `record_type` for each flow, so components can
 > adopt the envelope one at a time.
 
+## Multi-repo federation
+
+The ecosystem is several repositories, each owned and released on its own:
+
+| Component | Repository | What it is |
+|---|---|---|
+| `spec-1` | `CLS-1000/spec-1` | OSINT intelligence engine |
+| `pdx-1i` | `CLS-1000/pdx-1i` | Oregon and Washington civic records monitor |
+| `proc_track` | `CLS-1000/proc_track` | Oregon Legislature procedural replay |
+| `gatepost` | `CLS-1000/gatepost` | Signal briefs (repository named by the maintainer; nothing in this repo mentions it yet) |
+| `newsroom` | `CLS-1000/notitia-civica-newsroom` | Custody, triage, editorial desk, sign-off, export |
+| `notitia-civica` | `CLS-1000/notitia-civica` | The public publication and live site |
+
+**The architectural requirement:** components exchange data, never code. A
+component reads another's output as files or streams (in time, as
+ExchangeEnvelopes). It never imports or runs another repository's Python.
+Then each repository can change its internals, dependencies and release
+schedule without breaking the others, and a consumer only ever runs code it
+has reviewed.
+
+**Where things stand today.** The requirement does not fully hold yet:
+
+- No component emits or reads envelopes. Every importer reads its producer's
+  own format, such as `spec1_intelligence.jsonl`, `pdx1_signals.jsonl` or the
+  proc_track session cache.
+- **One exception runs another repo's code.**
+  `spec1_bridge/proc_track_importer.py` loads `replay_harness.py` from a
+  proc_track checkout with `importlib` and calls it in the newsroom's process.
+  This is the exception to remove: proc_track should publish its replay
+  outcomes as `chamber_flow` records, and the newsroom should read those
+  instead. `schemas/ecosystem.json` records it under `code_dependencies`.
+
+**`web_public/` and `CLS-1000/notitia-civica`.** `web_public/` in this repo is
+the Astro source for the reader pages of signed, verified articles. The
+newsroom's exporter writes its data, and the site is built here. Moving that
+build onto the live site in `CLS-1000/notitia-civica` is a manual step for the
+maintainer; nothing in this repo pushes there. `web_public/` is not a copy of
+that repository: `CLS-1000/notitia-civica` has no Astro project, and it holds
+the publication's own hand-published briefs, explainers, methodology and
+source register. spec-1's daily briefs land there directly, without passing
+through this repo.
+
 ## Wire format
 
 One envelope is one JSON object, encoded as UTF-8. A stream of envelopes is

@@ -241,30 +241,68 @@ def test_committed_schema_check_passes() -> None:
 # --- Ecosystem map -----------------------------------------------------------
 
 
-def test_ecosystem_map_uses_only_known_producers() -> None:
-    ecosystem = json.loads(ECOSYSTEM.read_text(encoding="utf-8"))
-    assert ecosystem["exchange_schema_version"] == "1"
-    assert (REPO_ROOT / ecosystem["exchange_schema"]).exists()
+def ecosystem() -> dict[str, Any]:
+    data: dict[str, Any] = json.loads(ECOSYSTEM.read_text(encoding="utf-8"))
+    return data
 
-    ids = [item["id"] for item in ecosystem["components"]]
+
+def test_ecosystem_map_uses_only_known_producers() -> None:
+    data = ecosystem()
+    assert data["exchange_schema_version"] == "1"
+    assert (REPO_ROOT / data["exchange_schema"]).exists()
+
+    ids = [item["id"] for item in data["components"]]
     assert sorted(ids) == sorted(PRODUCERS)
-    for flow in ecosystem["flows"]:
+    emits = {item["id"]: item["emits"] for item in data["components"]}
+    for flow in data["flows"]:
         assert flow["from"] in PRODUCERS and flow["to"] in PRODUCERS
-        envelope(producer=flow["from"], record_type=flow["record_type"])
-        emitted = next(
-            item["emits"]
-            for item in ecosystem["components"]
-            if item["id"] == flow["from"]
-        )
-        assert flow["record_type"] in emitted
+        if flow.get("envelope_applies", True):
+            envelope(producer=flow["from"], record_type=flow["record_type"])
+            assert flow["record_type"] in emits[flow["from"]]
+        else:
+            assert flow["record_type"] is None
+
+
+def test_ecosystem_is_multi_repo_with_every_repository_named() -> None:
+    data = ecosystem()
+    assert data["architecture"] == "multi-repo"
+    repositories = {item["id"]: item["repository"] for item in data["components"]}
+    assert repositories == {
+        "spec-1": "CLS-1000/spec-1",
+        "pdx-1i": "CLS-1000/pdx-1i",
+        "proc_track": "CLS-1000/proc_track",
+        "gatepost": "CLS-1000/gatepost",
+        "newsroom": "CLS-1000/notitia-civica-newsroom",
+        "notitia-civica": "CLS-1000/notitia-civica",
+    }
+
+
+def test_proc_track_code_dependency_is_recorded_while_it_exists() -> None:
+    """Fails when the exception is removed, so the map gets updated with it."""
+    importer = (REPO_ROOT / "spec1_bridge" / "proc_track_importer.py").read_text(
+        encoding="utf-8"
+    )
+    runs_proc_track_code = "importlib" in importer and "replay_harness" in importer
+    recorded = [
+        item
+        for item in ecosystem()["code_dependencies"]
+        if (item["from"], item["on"]) == ("newsroom", "proc_track")
+    ]
+    assert runs_proc_track_code
+    assert len(recorded) == 1
+    assert recorded[0]["where"] == "spec1_bridge/proc_track_importer.py"
+    assert recorded[0]["status"] == "exception to remove"
 
 
 def test_ecosystem_map_points_at_real_files() -> None:
-    ecosystem = json.loads(ECOSYSTEM.read_text(encoding="utf-8"))
-    for flow in ecosystem["flows"]:
+    data = ecosystem()
+    for flow in data["flows"]:
         for key in ("reader", "writer"):
             if flow.get(key):
                 assert (REPO_ROOT / flow[key]).exists(), flow[key]
-    for component in ecosystem["components"]:
-        for path in component.get("paths", []):
-            assert (REPO_ROOT / path).exists(), path
+    for component in data["components"]:
+        for key in ("paths", "source_in_newsroom"):
+            for path in component.get(key, []):
+                assert (REPO_ROOT / path).exists(), path
+    for dependency in data["code_dependencies"]:
+        assert (REPO_ROOT / dependency["where"]).exists()

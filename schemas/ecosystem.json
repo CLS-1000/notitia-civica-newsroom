@@ -1,5 +1,6 @@
 {
-  "$comment": "CLS-1000 component map. Each flow lists today's carrier (what the consumer reads now) and the ExchangeEnvelope record_type it will use. Details of other repositories come only from what this repo's importers rely on. See docs/ecosystem-exchange.md.",
+  "$comment": "CLS-1000 component map: a multi-repo federation. Each flow lists today's carrier (what the consumer reads now) and, where a data record moves, the ExchangeEnvelope record_type it will use. Details of other repositories come from this repo's importers and NC_DESK_TEAM_PROMPT.md, the CLS-1000/notitia-civica README, and, for gatepost's repository name, the maintainer. See docs/ecosystem-exchange.md.",
+  "architecture": "multi-repo",
   "exchange_schema_version": "1",
   "exchange_schema": "schemas/exchange-v1.schema.json",
   "envelope_adoption": "defined; no component emits or consumes envelopes yet",
@@ -8,39 +9,68 @@
       "id": "spec-1",
       "repository": "CLS-1000/spec-1",
       "role": "OSINT intelligence engine. Its records carry an analysis tier, and model hypotheses are unverified.",
-      "emits": ["intelligence"]
+      "emits": [
+        "intelligence",
+        "brief"
+      ]
     },
     {
       "id": "pdx-1i",
       "repository": "CLS-1000/pdx-1i",
       "role": "Civic records monitor for Oregon and Washington. Each record carries its own evidence tier and origin (live, cache or fixture).",
-      "emits": ["campaign_finance"]
+      "emits": [
+        "campaign_finance"
+      ]
     },
     {
       "id": "proc_track",
       "repository": "CLS-1000/proc_track",
       "role": "Replays Oregon Legislature OLIS action histories through a rule table to find procedural outcomes.",
-      "emits": ["chamber_flow"]
+      "emits": [
+        "chamber_flow"
+      ]
     },
     {
       "id": "gatepost",
-      "repository": null,
+      "repository": "CLS-1000/gatepost",
       "role": "Produces 'gatepost brief' Markdown summaries of signals.",
-      "emits": ["brief"]
+      "emits": [
+        "brief"
+      ],
+      "repository_note": "Named by the maintainer. No file or commit in this repo mentions it."
     },
     {
       "id": "newsroom",
       "repository": "CLS-1000/notitia-civica-newsroom",
       "role": "Seals sources into custody, triages leads, runs the editorial desk and human sign-off, and exports verified articles.",
-      "paths": ["spec1_bridge/", "newsroom/"],
-      "emits": ["article", "correction"]
+      "paths": [
+        "spec1_bridge/",
+        "newsroom/"
+      ],
+      "emits": [
+        "article",
+        "correction"
+      ]
     },
     {
       "id": "notitia-civica",
-      "repository": "CLS-1000/notitia-civica-newsroom",
-      "role": "The public reader site (Astro). It reads only what the newsroom's export publishes.",
-      "paths": ["web_public/"],
-      "emits": []
+      "repository": "CLS-1000/notitia-civica",
+      "role": "The public publication and live site. It holds hand-published briefs, explainers, methodology and the source register, and it receives the newsroom's built reader pages.",
+      "emits": [],
+      "source_in_newsroom": [
+        "web_public/"
+      ],
+      "source_in_newsroom_note": "web_public/ is the Astro source for the verified-article pages. It is built in the newsroom repo, and moving the build onto the live site is a manual step for the maintainer (NC_DESK_TEAM_PROMPT.md). It is not a copy of CLS-1000/notitia-civica, which has no Astro project."
+    }
+  ],
+  "code_dependencies": [
+    {
+      "from": "newsroom",
+      "on": "proc_track",
+      "kind": "runtime import: loads replay_harness.py from a proc_track checkout with importlib and runs it",
+      "where": "spec1_bridge/proc_track_importer.py",
+      "status": "exception to remove",
+      "remedy": "proc_track publishes chamber_flow records (envelopes), so the newsroom reads data instead of running proc_track's code"
     }
   ],
   "flows": [
@@ -77,6 +107,14 @@
       "notes": "Not imported: signal lines name a source but carry no URL, so nothing can be sealed. An envelope payload with source URLs would make this flow possible."
     },
     {
+      "from": "spec-1",
+      "to": "notitia-civica",
+      "record_type": "brief",
+      "carrier": "Markdown briefs (briefs/spec1_brief_YYYY-MM-DD.md) and briefs/brief_index.jsonl in CLS-1000/notitia-civica",
+      "reader": null,
+      "notes": "Per the CLS-1000/notitia-civica README. Published as written; this repo is not involved."
+    },
+    {
       "from": "newsroom",
       "to": "notitia-civica",
       "record_type": "article",
@@ -93,6 +131,16 @@
       "reader": "web_public/src/lib/data.ts",
       "writer": "web_public/scripts/export_verified.py",
       "notes": "export_verified.py writes this file once the Five-Mask Standards branch (PR #14) is merged. Until then the site reads it but the exporter does not write it."
+    },
+    {
+      "from": "newsroom",
+      "to": "notitia-civica",
+      "record_type": null,
+      "carrier": "the built web_public/ site (astro build output)",
+      "reader": null,
+      "writer": "web_public/",
+      "notes": "Manual: the maintainer moves the build onto the live site. Nothing in this repo pushes to CLS-1000/notitia-civica.",
+      "envelope_applies": false
     }
   ]
 }
