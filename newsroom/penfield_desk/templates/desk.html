@@ -105,6 +105,9 @@
       {% for name, label in required_checks.items() %}
       <label><input type="checkbox" form="draft-form" name="check__{{ name }}"> {{ label }}</label>
       {% endfor %}
+      {% if not article.uncertainty_disclosures %}
+      <label><input type="checkbox" form="draft-form" name="no_open_questions_confirmed"> I confirm this draft has no open questions or unverified points</label>
+      {% endif %}
       <label>Editor name <input type="text" form="draft-form" name="editor_name" autocomplete="name"></label>
     </div>
     {% if article.uncertainty_disclosures %}

@@ -33,6 +33,7 @@ from newsroom.dors_venabili.gatekeeper import (
     run_all_gates,
     split_paragraphs,
     verify_grounding,
+    verify_uncertainty_disclosures,
 )
 from newsroom.harlan_eternity.signoff import (
     DEFAULT_DSN,
@@ -254,6 +255,16 @@ def create_app(
             right_of_reply_logged=form.get("right_of_reply_logged") == "on",
             badge_type=badge_from_form(form, article),
             source_tiers=tiers,
+        )
+        gates.append(
+            GateResult(
+                "uncertainty",
+                "Uncertainty disclosures",
+                verify_uncertainty_disclosures(
+                    article["uncertainty_disclosures"],
+                    form.get("no_open_questions_confirmed") == "on",
+                ),
+            )
         )
         checks = checks_from_form(form)
         unticked = missing_checks(checks)

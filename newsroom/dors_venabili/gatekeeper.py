@@ -278,6 +278,26 @@ def check_source_diversity(
     return issues
 
 
+def verify_uncertainty_disclosures(
+    disclosures: list[str] | None, no_open_questions_confirmed: bool = False
+) -> list[str]:
+    """Require a draft to name what is still unknown or unverified.
+
+    An empty list passes only when the editor affirms there are no open
+    questions, so a missing disclosure has to be an explicit editorial choice.
+    """
+    if no_open_questions_confirmed:
+        return []
+    if any(str(item).strip() for item in disclosures or []):
+        return []
+    return [
+        (
+            "no uncertainty disclosures: list what is unknown or unverified, "
+            "or confirm the draft has no open questions"
+        )
+    ]
+
+
 @dataclass(frozen=True, slots=True)
 class GateResult:
     name: str
