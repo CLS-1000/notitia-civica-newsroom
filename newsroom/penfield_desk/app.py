@@ -35,6 +35,7 @@ from newsroom.dors_venabili.gatekeeper import (
     has_reply_record,
     normalize_text,
     run_all_gates,
+    source_review_warnings,
     split_paragraphs,
     verify_grounding,
     verify_right_of_reply_log,
@@ -47,6 +48,7 @@ from newsroom.harlan_eternity.signoff import (
     CorrectionError,
     SignOffError,
     load_reply_log,
+    load_tier_review_flags,
     missing_checks,
     record_correction,
     sign_and_promote_article,
@@ -293,6 +295,16 @@ def create_app(
             right_of_reply_logged=has_reply_record(replies),
             badge_type=badge_from_form(form, article),
             source_tiers=tiers,
+        )
+        cited = extract_citations(body)
+        gates.append(
+            GateResult(
+                "source_review",
+                "Source reliability review",
+                warnings=source_review_warnings(
+                    cited, load_tier_review_flags(conn, sorted(set(cited)))
+                ),
+            )
         )
         gates.append(
             GateResult(

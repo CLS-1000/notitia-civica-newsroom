@@ -104,6 +104,23 @@ def load_reply_log(conn: Connection, article_id: Any) -> list[dict[str, Any]]:
         ).fetchall()
 
 
+def load_tier_review_flags(conn: Connection, source_ids: list[str]) -> dict[str, str]:
+    """Return the review reason for each of source_ids flagged for a tier review.
+
+    Flags are set by database triggers (migrations/007) when a factual correction
+    is recorded or an article is retracted, whichever code path does it.
+    """
+    with conn.cursor(row_factory=dict_row) as cursor:
+        rows = cursor.execute(
+            """
+            SELECT source_id, tier_review_reason FROM source_registry
+            WHERE source_id = ANY(%s) AND tier_review_flagged
+            """,
+            (source_ids,),
+        ).fetchall()
+    return {row["source_id"]: row["tier_review_reason"] for row in rows}
+
+
 def clean_lines(items: list[str]) -> list[str]:
     return [item.strip() for item in items if item.strip()]
 
@@ -364,7 +381,7 @@ def _record(
         # FOR SHARE keeps a retraction or edit from landing mid-correction.
         article = cursor.execute(
             """
-            SELECT article_id, status, body_markdown FROM articles
+            SELECT article_id, status, body_markdown, source_ids FROM articles
             WHERE slug = %s FOR SHARE
             """,
             (slug,),
@@ -408,6 +425,11 @@ def _record(
         "explanation": explanation.strip(),
         "editor_signature": editor_signature.strip(),
         "corrected_at": row["corrected_at"],
+        "flagged_sources": sorted(
+            load_tier_review_flags(conn, list(article["source_ids"]))
+        )
+        if correction_type == "factual_correction"
+        else [],
     }
 
 
@@ -425,7 +447,9 @@ def record_correction(
 
     The article row is never written, so its body and editorial proof hash still
     match what the editor signed; readers see the correction beside it. Any
-    original_text must quote the signed article.
+    original_text must quote the signed article. A factual correction flags every
+    source the article cites for a tier review (a database trigger does it, in the
+    same transaction), and the result lists them as flagged_sources.
     """
     args = (
         slug,

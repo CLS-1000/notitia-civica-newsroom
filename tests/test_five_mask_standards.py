@@ -35,10 +35,11 @@ from test_phase2_workstation import (
     seed,
     sign,
 )
-from test_phase3_export import export
+from test_phase3_export import export, retract
 from test_spec1_importer import _record as spec1_raw
 
 from newsroom.dors_venabili.gatekeeper import (
+    source_review_warnings,
     verify_right_of_reply_log,
     verify_uncertainty_disclosures,
 )
@@ -1175,3 +1176,178 @@ BODY_WITH_ALLEGATION = (
     "Jane Doe embezzled funds. [S-1]\n\n"
     "Audits ran through June. [S-2]"
 )
+
+
+# --- Source reliability learning loop ----------------------------------------------
+
+
+def review_flags(db: Conn) -> dict[str, tuple[bool, str | None, bool]]:
+    rows = db.execute(
+        """
+        SELECT source_id, tier_review_flagged, tier_review_reason,
+               flagged_at IS NOT NULL
+        FROM source_registry ORDER BY source_id
+        """
+    ).fetchall()
+    return {row[0]: (row[1], row[2], row[3]) for row in rows}
+
+
+def test_new_sources_are_not_flagged(db: Conn) -> None:
+    seed(db)
+    assert review_flags(db) == {
+        "S-1": (False, None, False),
+        "S-2": (False, None, False),
+    }
+
+
+def test_factual_correction_flags_every_cited_source(db: Conn) -> None:
+    published(db)
+    result = correct(db)
+
+    assert result["flagged_sources"] == ["S-1", "S-2"]
+    flags = review_flags(db)
+    for source_id in ("S-1", "S-2"):
+        flagged, reason, stamped = flags[source_id]
+        assert flagged and stamped
+        assert reason is not None
+        assert reason.startswith(f"factual correction to {SLUG} on ")
+        assert reason.endswith("The county revised its count on Oct. 20.")
+
+
+@pytest.mark.parametrize("kind", ["clarification", "methodology_update"])
+def test_other_corrections_do_not_flag(db: Conn, kind: str) -> None:
+    published(db)
+    result = correct(
+        db,
+        correction_type=kind,
+        original_text=None,
+        corrected_text=None,
+        explanation="We explain the count.",
+    )
+    assert result["flagged_sources"] == []
+    assert not any(flag[0] for flag in review_flags(db).values())
+
+
+def test_retraction_flags_every_cited_source(db: Conn) -> None:
+    published(db)
+    retract(db, "The cited audit was withdrawn.")
+    for flagged, reason, stamped in review_flags(db).values():
+        assert flagged and stamped
+        assert reason is not None
+        assert reason.startswith(f"retraction of {SLUG} on ")
+        assert reason.endswith("The cited audit was withdrawn.")
+
+
+def test_later_flags_append_and_keep_the_first_time(db: Conn) -> None:
+    published(db)
+    correct(db)
+    first = db.execute(
+        "SELECT flagged_at FROM source_registry WHERE source_id = 'S-1'"
+    ).fetchone()
+    retract(db, "The cited audit was withdrawn.")
+
+    row = db.execute(
+        """
+        SELECT tier_review_reason, flagged_at FROM source_registry
+        WHERE source_id = 'S-1'
+        """
+    ).fetchone()
+    assert row is not None and first is not None
+    reason, flagged_at = row
+    assert reason.startswith("factual correction to ")
+    assert "; retraction of " in reason
+    assert flagged_at == first[0]
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        (
+            "UPDATE source_registry SET tier_review_flagged = FALSE, "
+            "tier_review_reason = NULL, flagged_at = NULL"
+        ),
+        "UPDATE source_registry SET tier_review_reason = 'rewritten'",
+        "UPDATE source_registry SET flagged_at = now() - interval '1 day'",
+        (
+            "UPDATE source_registry SET tier = 'tier_4_unverified', "
+            "tier_review_reason = tier_review_reason || '; reviewed'"
+        ),
+        "UPDATE source_registry SET verbatim_text = 'edited'",
+    ],
+    ids=["unflag", "rewrite-reason", "move-time", "tier-with-flag", "evidence"],
+)
+def test_flags_are_one_way_and_evidence_stays_sealed(db: Conn, statement: str) -> None:
+    published(db)
+    correct(db)
+    before = db.execute("SELECT * FROM source_registry ORDER BY source_id").fetchall()
+    with pytest.raises(errors.RaiseException, match="CRITICAL_AUDIT_VIOLATION"):
+        db.execute(statement.encode())
+    after = db.execute("SELECT * FROM source_registry ORDER BY source_id").fetchall()
+    assert after == before
+
+
+def test_a_flag_needs_a_reason_and_a_time(db: Conn) -> None:
+    seed(db)
+    with pytest.raises(errors.CheckViolation, match="tier_review_is_complete"):
+        db.execute("UPDATE source_registry SET tier_review_flagged = TRUE")
+
+
+def test_appending_a_reason_is_allowed(db: Conn) -> None:
+    published(db)
+    correct(db)
+    db.execute(
+        "UPDATE source_registry SET tier_review_reason = "
+        "tier_review_reason || '; second look requested'"
+    )
+    reason = review_flags(db)["S-1"][1]
+    assert reason is not None and reason.endswith("; second look requested")
+
+
+def test_source_review_warning_wording() -> None:
+    flags = {"S-2": "retraction of budget-shortfall on 2026-10-20: audit withdrawn."}
+    assert source_review_warnings(["S-1", "S-2", "S-2"], flags) == [
+        (
+            "Warning: Source [S-2] was flagged for tier review following a previous "
+            "factual correction or retraction: retraction of budget-shortfall on "
+            "2026-10-20: audit withdrawn."
+        )
+    ]
+    assert source_review_warnings(["S-1"], flags) == []
+
+
+def test_later_draft_citing_a_flagged_source_shows_the_warning(
+    desk: TestClient, db: Conn
+) -> None:
+    published(db)
+    correct(db)
+    seed(db, slug="follow-up")
+
+    page = desk.get("/?article=follow-up").text
+    assert "Warning: Source [S-1] was flagged for tier review following a " in page
+    assert "Warning: Source [S-2] was flagged" in page
+    assert "The county revised its count on Oct. 20." in page
+
+
+def test_warning_does_not_block_sign_off(desk: TestClient, db: Conn) -> None:
+    published(db)
+    correct(db)
+    seed(db, slug="follow-up")
+
+    html = desk.post("/articles/follow-up/validate", data=form()).text
+    assert 'class="gate ok warned" data-gate="source_review"' in html
+    assert "disabled" not in html[html.index('id="sign-button"') :].split(">", 1)[0]
+    assert desk.post("/articles/follow-up/sign", data=form()).status_code == 200
+
+
+def test_warning_follows_the_body_not_the_source_list(
+    desk: TestClient, db: Conn
+) -> None:
+    published(db)
+    correct(db)
+    seed(db, slug="follow-up")
+    html = desk.post(
+        "/articles/follow-up/validate",
+        data=form(body_markdown="County records list 14 closed sites. [S-2]"),
+    ).text
+    assert "Source [S-2] was flagged" in html
+    assert "Source [S-1] was flagged" not in html

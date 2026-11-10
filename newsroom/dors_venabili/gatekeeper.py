@@ -428,11 +428,31 @@ def verify_right_of_reply_log(
     return issues
 
 
+def source_review_warnings(citations: list[str], flags: dict[str, str]) -> list[str]:
+    """Warn about each cited source flagged for a tier review, in citation order.
+
+    flags maps a flagged source ID to its review reason. A warning never blocks
+    publication, because a flagged source may still be right; it tells the editor
+    to check the source against what went wrong before.
+    """
+    warnings = []
+    for source_id in dict.fromkeys(citations):
+        if source_id in flags:
+            reason = flags[source_id].strip().rstrip(".")
+            warnings.append(
+                f"Warning: Source [{source_id}] was flagged for tier review following "
+                f"a previous factual correction or retraction: {reason}."
+            )
+    return warnings
+
+
 @dataclass(frozen=True, slots=True)
 class GateResult:
     name: str
     label: str
     issues: list[str] = field(default_factory=list)
+    # Shown to the editor, but never a reason to refuse publication.
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:

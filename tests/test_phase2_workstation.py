@@ -972,7 +972,7 @@ def test_validate_enables_button_when_everything_passes(
     seed(db)
     html = desk.post(f"/articles/{SLUG}/validate", data=form()).text
     assert "disabled" not in sign_button(html)
-    assert html.count('class="gate ok"') == 7
+    assert html.count('class="gate ok"') == 8
     assert 'hx-swap-oob="true"' in html
 
 

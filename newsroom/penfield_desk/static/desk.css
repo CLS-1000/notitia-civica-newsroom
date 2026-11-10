@@ -172,6 +172,8 @@ textarea.disclosures,
 .gate-name::before { content: "\2715  "; color: var(--pf-fail); }
 .gate.ok .gate-name::before { content: "\2713  "; color: var(--pf-pass); }
 .gate ul { margin: var(--pf-space-1) 0 0; padding-left: var(--pf-space-4); color: var(--pf-fail); font-size: 12px; }
+.gate.ok.warned .gate-name::before { content: "!  "; color: var(--pf-warn); }
+.gate ul.warnings { color: var(--pf-warn); }
 
 .signoff label { padding: var(--pf-space-1) 0; color: var(--pf-text); font-size: 13px; }
 
