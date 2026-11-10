@@ -1,0 +1,98 @@
+{
+  "$comment": "CLS-1000 component map. Each flow lists today's carrier (what the consumer reads now) and the ExchangeEnvelope record_type it will use. Details of other repositories come only from what this repo's importers rely on. See docs/ecosystem-exchange.md.",
+  "exchange_schema_version": "1",
+  "exchange_schema": "schemas/exchange-v1.schema.json",
+  "envelope_adoption": "defined; no component emits or consumes envelopes yet",
+  "components": [
+    {
+      "id": "spec-1",
+      "repository": "CLS-1000/spec-1",
+      "role": "OSINT intelligence engine. Its records carry an analysis tier, and model hypotheses are unverified.",
+      "emits": ["intelligence"]
+    },
+    {
+      "id": "pdx-1i",
+      "repository": "CLS-1000/pdx-1i",
+      "role": "Civic records monitor for Oregon and Washington. Each record carries its own evidence tier and origin (live, cache or fixture).",
+      "emits": ["campaign_finance"]
+    },
+    {
+      "id": "proc_track",
+      "repository": "CLS-1000/proc_track",
+      "role": "Replays Oregon Legislature OLIS action histories through a rule table to find procedural outcomes.",
+      "emits": ["chamber_flow"]
+    },
+    {
+      "id": "gatepost",
+      "repository": null,
+      "role": "Produces 'gatepost brief' Markdown summaries of signals.",
+      "emits": ["brief"]
+    },
+    {
+      "id": "newsroom",
+      "repository": "CLS-1000/notitia-civica-newsroom",
+      "role": "Seals sources into custody, triages leads, runs the editorial desk and human sign-off, and exports verified articles.",
+      "paths": ["spec1_bridge/", "newsroom/"],
+      "emits": ["article", "correction"]
+    },
+    {
+      "id": "notitia-civica",
+      "repository": "CLS-1000/notitia-civica-newsroom",
+      "role": "The public reader site (Astro). It reads only what the newsroom's export publishes.",
+      "paths": ["web_public/"],
+      "emits": []
+    }
+  ],
+  "flows": [
+    {
+      "from": "spec-1",
+      "to": "newsroom",
+      "record_type": "intelligence",
+      "carrier": "spec1_intelligence.jsonl, plus an optional cls_verdicts verdicts.jsonl",
+      "reader": "spec1_bridge/spec1_importer.py",
+      "notes": "Only analysis_tier='llm_verified' records are imported. A record whose latest human verdict is 'incorrect' is skipped."
+    },
+    {
+      "from": "pdx-1i",
+      "to": "newsroom",
+      "record_type": "campaign_finance",
+      "carrier": "pdx1_signals.jsonl (pdx1.models.IntelligenceRecord, one per line)",
+      "reader": "spec1_bridge/pdx1_importer.py",
+      "notes": "Only live and cache origins are public records. INFERRED records never pass the evidence bar."
+    },
+    {
+      "from": "proc_track",
+      "to": "newsroom",
+      "record_type": "chamber_flow",
+      "carrier": "a proc_track checkout read offline: cache/<session>.json and replay_harness.py",
+      "reader": "spec1_bridge/proc_track_importer.py",
+      "notes": "Only completed replays with a notable outcome (veto, veto override, line-item veto, law without signature) become leads."
+    },
+    {
+      "from": "gatepost",
+      "to": "newsroom",
+      "record_type": "brief",
+      "carrier": "'gatepost brief' Markdown",
+      "reader": null,
+      "notes": "Not imported: signal lines name a source but carry no URL, so nothing can be sealed. An envelope payload with source URLs would make this flow possible."
+    },
+    {
+      "from": "newsroom",
+      "to": "notitia-civica",
+      "record_type": "article",
+      "carrier": "web_public/src/data/articles.json",
+      "reader": "web_public/src/lib/data.ts",
+      "writer": "web_public/scripts/export_verified.py",
+      "notes": "Only signed, human-approved articles whose proof hash still matches are exported."
+    },
+    {
+      "from": "newsroom",
+      "to": "notitia-civica",
+      "record_type": "correction",
+      "carrier": "web_public/src/data/corrections.json",
+      "reader": "web_public/src/lib/data.ts",
+      "writer": "web_public/scripts/export_verified.py",
+      "notes": "export_verified.py writes this file once the Five-Mask Standards branch (PR #14) is merged. Until then the site reads it but the exporter does not write it."
+    }
+  ]
+}
