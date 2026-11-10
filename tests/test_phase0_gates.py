@@ -288,7 +288,7 @@ def insert_source(conn: Conn, source_id: str = "S-1") -> None:
         pytest.param("DELETE FROM source_registry", id="delete"),
         pytest.param("TRUNCATE source_registry", id="truncate"),
         pytest.param(
-            "TRUNCATE articles, source_registry, article_corrections",
+            "TRUNCATE articles, source_registry, article_corrections, article_reply_records",
             id="truncate-multi",
         ),
     ],

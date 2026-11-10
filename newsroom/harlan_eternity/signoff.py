@@ -20,6 +20,7 @@ from newsroom.dors_venabili.gatekeeper import (
     extract_citations,
     normalize_text,
     run_all_gates,
+    verify_right_of_reply_log,
     verify_uncertainty_disclosures,
 )
 
@@ -88,6 +89,24 @@ def load_sources(
     return texts, {row["source_id"]: row["tier"] for row in rows}
 
 
+def load_reply_log(conn: Connection, article_id: Any) -> list[dict[str, Any]]:
+    """Return an article's reply records, oldest request first."""
+    with conn.cursor(row_factory=dict_row) as cursor:
+        return cursor.execute(
+            """
+            SELECT reply_id, subject_name, subject_type, contact_method,
+                   requested_at, deadline_at, response_status, response_summary
+            FROM article_reply_records WHERE article_id = %s
+            ORDER BY requested_at, created_at, reply_id
+            """,
+            (article_id,),
+        ).fetchall()
+
+
+def clean_lines(items: list[str]) -> list[str]:
+    return [item.strip() for item in items if item.strip()]
+
+
 def _collect_issues(
     conn: Connection,
     article: dict[str, Any],
@@ -97,6 +116,9 @@ def _collect_issues(
     checks: dict[str, bool],
     disclosures: list[str],
     no_open_questions_confirmed: bool,
+    allegation_subjects: list[str],
+    no_allegations_attested: bool,
+    now: datetime,
 ) -> list[str]:
     issues = [f"human check not ticked: {name}" for name in missing_checks(checks)]
     if not editor_name.strip():
@@ -128,6 +150,17 @@ def _collect_issues(
             disclosures, no_open_questions_confirmed
         )
     )
+    issues.extend(
+        f"right_of_reply: {issue}"
+        for issue in verify_right_of_reply_log(
+            load_reply_log(conn, article["article_id"]),
+            allegation_subjects,
+            no_allegations_attested=no_allegations_attested,
+            body=body_markdown,
+            badge_type=article["badge_type"],
+            now=now,
+        )
+    )
     return issues
 
 
@@ -141,6 +174,8 @@ def _sign(
     clock: Callable[[], datetime],
     disclosures: list[str] | None,
     no_open_questions_confirmed: bool,
+    allegation_subjects: list[str] | None,
+    no_allegations_attested: bool,
 ) -> dict[str, Any]:
     with conn.transaction(), conn.cursor(row_factory=dict_row) as cursor:
         article = cursor.execute(
@@ -151,7 +186,12 @@ def _sign(
 
         if disclosures is None:
             disclosures = list(article["uncertainty_disclosures"])
-        disclosures = [item.strip() for item in disclosures if item.strip()]
+        disclosures = clean_lines(disclosures)
+        if allegation_subjects is None:
+            allegation_subjects = list(article["allegation_subjects"])
+        allegation_subjects = clean_lines(allegation_subjects)
+        # One moment for both the reply deadlines and the signed timestamp.
+        moment = clock()
         issues = _collect_issues(
             conn,
             article,
@@ -161,11 +201,14 @@ def _sign(
             checks,
             disclosures,
             no_open_questions_confirmed,
+            allegation_subjects,
+            no_allegations_attested,
+            moment,
         )
         if issues:
             raise SignOffError(issues)
 
-        signed_at = canonical_timestamp(clock())
+        signed_at = canonical_timestamp(moment)
         proof_hash = canonical_proof_hash(
             body_markdown, source_ids, editor_name, signed_at
         )
@@ -182,6 +225,8 @@ def _sign(
                 sign_off_checks = %s,
                 uncertainty_disclosures = %s,
                 no_open_questions_confirmed = %s,
+                allegation_subjects = %s,
+                no_allegations_attested = %s,
                 status = 'published'
             WHERE article_id = %s
             RETURNING article_id, status, analysis_tier, human_approved, published_at
@@ -195,6 +240,8 @@ def _sign(
                 Jsonb(checks),
                 Jsonb(disclosures),
                 no_open_questions_confirmed,
+                Jsonb(allegation_subjects),
+                no_allegations_attested,
                 article["article_id"],
             ),
         ).fetchone()
@@ -212,6 +259,8 @@ def _sign(
         "source_ids": source_ids,
         "uncertainty_disclosures": disclosures,
         "no_open_questions_confirmed": no_open_questions_confirmed,
+        "allegation_subjects": allegation_subjects,
+        "no_allegations_attested": no_allegations_attested,
     }
 
 
@@ -226,13 +275,17 @@ def sign_and_promote_article(
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     uncertainty_disclosures: list[str] | None = None,
     no_open_questions_confirmed: bool = False,
+    allegation_subjects: list[str] | None = None,
+    no_allegations_attested: bool = False,
 ) -> dict[str, Any]:
     """Verify, hash, and publish an article, or raise SignOffError and change nothing.
 
-    uncertainty_disclosures defaults to the list stored on the article. Whatever
-    list is checked is saved with the sign-off, as is the editor's confirmation
-    that there are no open questions. The confirmation is never read back from
-    the row: it has to be given at the moment of signing.
+    uncertainty_disclosures and allegation_subjects default to the lists stored
+    on the article, and whatever lists are checked are saved with the sign-off.
+    So are the editor's attestations that there are no open questions and no
+    allegations, which are never read back from the row: they have to be given
+    at the moment of signing.
+    The reply log is checked against clock(), the same moment that is signed.
     """
     args = (
         slug,
@@ -243,6 +296,8 @@ def sign_and_promote_article(
         clock,
         uncertainty_disclosures,
         no_open_questions_confirmed,
+        allegation_subjects,
+        no_allegations_attested,
     )
     if conn is not None:
         return _sign(conn, *args)

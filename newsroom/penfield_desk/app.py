@@ -27,12 +27,16 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from newsroom.dors_venabili.gatekeeper import (
+    REPLY_CONTACT_METHODS,
+    REPLY_STATUSES,
+    REPLY_SUBJECT_TYPES,
     GateResult,
     extract_citations,
     normalize_text,
     run_all_gates,
     split_paragraphs,
     verify_grounding,
+    verify_right_of_reply_log,
     verify_uncertainty_disclosures,
 )
 from newsroom.harlan_eternity.signoff import (
@@ -41,6 +45,7 @@ from newsroom.harlan_eternity.signoff import (
     REQUIRED_CHECKS,
     CorrectionError,
     SignOffError,
+    load_reply_log,
     missing_checks,
     record_correction,
     sign_and_promote_article,
@@ -50,6 +55,7 @@ from newsroom.penfield_desk.claude_drafter import (
     DraftError,
     DraftSource,
 )
+from newsroom.penfield_desk.reply_log import ReplyLogError, add_reply, update_reply
 
 HOST: Final = "127.0.0.1"
 PORT: Final = 8000
@@ -194,14 +200,29 @@ def badge_from_form(form: dict[str, Any], article: dict[str, Any]) -> str:
 
 def disclosures_from_form(form: dict[str, Any], article: dict[str, Any]) -> list[str]:
     """Return one disclosure per non-blank line, or the stored list if absent."""
-    if "uncertainty_disclosures" not in form:
-        return [str(item) for item in article["uncertainty_disclosures"]]
-    lines = str(form["uncertainty_disclosures"]).splitlines()
+    return _lines_from_form(form, article, "uncertainty_disclosures")
+
+
+def subjects_from_form(form: dict[str, Any], article: dict[str, Any]) -> list[str]:
+    """Return the named subjects of allegations, one per non-blank line."""
+    return _lines_from_form(form, article, "allegation_subjects")
+
+
+def _lines_from_form(
+    form: dict[str, Any], article: dict[str, Any], key: str
+) -> list[str]:
+    if key not in form:
+        return [str(item) for item in article[key]]
+    lines = str(form[key]).splitlines()
     return [line.strip() for line in lines if line.strip()]
 
 
 def confirmed_from_form(form: dict[str, Any]) -> bool:
     return form.get("no_open_questions_confirmed") == "on"
+
+
+def no_allegations_from_form(form: dict[str, Any]) -> bool:
+    return form.get("no_allegations_attested") == "on"
 
 
 def checks_from_form(form: dict[str, Any]) -> dict[str, bool]:
@@ -280,6 +301,19 @@ def create_app(
                 ),
             )
         )
+        gates.append(
+            GateResult(
+                "right_of_reply",
+                "Right of reply",
+                verify_right_of_reply_log(
+                    load_reply_log(conn, article["article_id"]),
+                    subjects_from_form(form, article),
+                    no_allegations_attested=no_allegations_from_form(form),
+                    body=body,
+                    badge_type=badge_from_form(form, article),
+                ),
+            )
+        )
         checks = checks_from_form(form)
         unticked = missing_checks(checks)
         sentences = {key: split_sentences(value) for key, value in texts.items()}
@@ -303,7 +337,8 @@ def create_app(
             UPDATE articles
             SET headline = %s, deck = %s, body_markdown = %s, source_roles = %s,
                 badge_type = %s, is_private_person = %s, right_of_reply_logged = %s,
-                uncertainty_disclosures = %s, no_open_questions_confirmed = %s
+                uncertainty_disclosures = %s, no_open_questions_confirmed = %s,
+                allegation_subjects = %s, no_allegations_attested = %s
             WHERE article_id = %s AND status = ANY(%s::pub_status_enum[])
             """,
             (
@@ -316,6 +351,8 @@ def create_app(
                 form.get("right_of_reply_logged") == "on",
                 Jsonb(disclosures_from_form(form, article)),
                 confirmed_from_form(form),
+                Jsonb(subjects_from_form(form, article)),
+                no_allegations_from_form(form),
                 article["article_id"],
                 list(EDITABLE_STATUSES),
             ),
@@ -334,6 +371,21 @@ def create_app(
                 """,
                 (article_id,),
             ).fetchall()
+
+    def reply_context(
+        conn: psycopg.Connection[Any],
+        article: dict[str, Any],
+        issues: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        return {
+            "article": article,
+            "replies": load_reply_log(conn, article["article_id"]),
+            "reply_subject_types": REPLY_SUBJECT_TYPES,
+            "reply_contact_methods": REPLY_CONTACT_METHODS,
+            "reply_statuses": REPLY_STATUSES,
+            "reply_issues": list(issues),
+            "reply_log_open": article["status"] in EDITABLE_STATUSES,
+        }
 
     @app.get("/", response_class=HTMLResponse)
     def desk(
@@ -376,11 +428,15 @@ def create_app(
                 "no_open_questions_confirmed": (
                     "on" if row["no_open_questions_confirmed"] else ""
                 ),
+                "no_allegations_attested": (
+                    "on" if row["no_allegations_attested"] else ""
+                ),
                 **{f"role__{key}": value for key, value in row["source_roles"].items()},
             }
             context.update(evaluate(conn, row, form))
             context["sources"] = sources
             context["corrections"] = fetch_corrections(conn, row["article_id"])
+            context.update(reply_context(conn, row))
             context["lead"] = next(
                 (item for item in leads if item["slug"] == article), None
             )
@@ -505,6 +561,8 @@ def create_app(
                 conn=conn,
                 uncertainty_disclosures=disclosures_from_form(form, article),
                 no_open_questions_confirmed=confirmed_from_form(form),
+                allegation_subjects=subjects_from_form(form, article),
+                no_allegations_attested=no_allegations_from_form(form),
             )
         except SignOffError as error:
             context = {**state, "refused": True, "sign_issues": error.issues}
@@ -542,6 +600,44 @@ def create_app(
         }
         return templates.TemplateResponse(
             request, "_corrections.html", context, status_code=422 if issues else 200
+        )
+
+    def _reply_response(
+        request: Request,
+        conn: psycopg.Connection[Any],
+        slug: str,
+        change: Callable[[dict[str, Any]], None],
+    ) -> HTMLResponse:
+        article = fetch_article(conn, slug)
+        issues: list[str] = []
+        try:
+            change(article)
+        except ReplyLogError as error:
+            issues = error.issues
+        return templates.TemplateResponse(
+            request,
+            "_replies.html",
+            reply_context(conn, article, tuple(issues)),
+            status_code=422 if issues else 200,
+        )
+
+    @app.post("/articles/{slug}/replies", response_class=HTMLResponse)
+    async def log_reply(request: Request, slug: str, conn: DbConn) -> HTMLResponse:
+        form = dict(await request.form())
+        return _reply_response(
+            request, conn, slug, lambda article: add_reply(conn, article, form)
+        )
+
+    @app.post("/articles/{slug}/replies/{reply_id}", response_class=HTMLResponse)
+    async def update_reply_status(
+        request: Request, slug: str, reply_id: uuid.UUID, conn: DbConn
+    ) -> HTMLResponse:
+        form = dict(await request.form())
+        return _reply_response(
+            request,
+            conn,
+            slug,
+            lambda article: update_reply(conn, article, reply_id, form),
         )
 
     return app

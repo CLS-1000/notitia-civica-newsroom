@@ -26,7 +26,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
@@ -68,6 +68,15 @@ _CORRECTIONS: Final = """
     ORDER BY c.corrected_at DESC, c.correction_id
 """
 
+_REPLIES: Final = """
+    SELECT r.subject_name, r.subject_type, r.contact_method, r.requested_at,
+           r.deadline_at, r.response_status, r.response_summary
+    FROM article_reply_records r
+    JOIN articles a USING (article_id)
+    WHERE a.slug = %s
+    ORDER BY r.requested_at, r.created_at, r.reply_id
+"""
+
 _SOURCES: Final = """
     SELECT source_id, url, domain, tier, raw_sha256, archive_path, retrieved_at
     FROM source_registry
@@ -102,6 +111,47 @@ def _public_source(row: dict[str, Any], archive_base: str | None) -> dict[str, A
         "raw_sha256": row["raw_sha256"],
         "archive_url": archive_url,
         "retrieved_at": _iso(row["retrieved_at"]),
+    }
+
+
+def _long_date(moment: datetime) -> str:
+    utc = moment.astimezone(UTC)
+    return f"{utc:%B} {utc.day}, {utc.year}"
+
+
+def _sentence(text: str) -> str:
+    text = text.strip()
+    return text if text.endswith((".", "!", "?", '"', "\u201d")) else f"{text}."
+
+
+def reply_statement(record: dict[str, Any]) -> str:
+    """Return the Five-Mask right-of-reply sentence for one logged request.
+
+    A request still pending at publication passed the sign-off gate only because
+    its deadline had elapsed, so it reads as no response.
+    """
+    opening = (
+        f"We contacted {record['subject_name']} on "
+        f"{_long_date(record['requested_at'])} with specific findings; "
+    )
+    status = record["response_status"]
+    if status == "responded":
+        return opening + _sentence(record["response_summary"])
+    if status == "declined_to_comment":
+        return opening + "they declined to comment."
+    return opening + "they did not respond by the publication deadline."
+
+
+def _public_reply(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "subject_name": row["subject_name"],
+        "subject_type": row["subject_type"],
+        "contact_method": row["contact_method"],
+        "requested_at": _iso(row["requested_at"]),
+        "deadline_at": _iso(row["deadline_at"]),
+        "response_status": row["response_status"],
+        "response_summary": row["response_summary"],
+        "statement": reply_statement(row),
     }
 
 
@@ -186,6 +236,12 @@ def collect_articles(
                     "uncertainty_disclosures": article["uncertainty_disclosures"],
                     "evidence_bar": _evidence_bar(sources),
                     "sources": sources,
+                    "replies": [
+                        _public_reply(reply)
+                        for reply in cursor.execute(
+                            _REPLIES, (article["slug"],)
+                        ).fetchall()
+                    ],
                 }
             )
     return exported, withheld

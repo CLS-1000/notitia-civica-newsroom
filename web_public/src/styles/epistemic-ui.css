@@ -151,6 +151,16 @@
   text-decoration-thickness: 2px;
 }
 
+.right-of-reply {
+  margin-block: var(--nc-space-5);
+  padding-top: var(--nc-space-3);
+  border-top: 2px solid var(--nc-rule-strong);
+  max-width: var(--nc-measure);
+}
+
+.right-of-reply h2 { font-size: var(--nc-text-lg); }
+.right-of-reply p { margin-bottom: var(--nc-space-2); }
+
 .correction-entry {
   padding-block: var(--nc-space-2);
   border-top: 1px solid var(--nc-rule);

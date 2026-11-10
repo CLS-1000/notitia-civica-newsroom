@@ -651,6 +651,7 @@ def sign(conn: Conn, **overrides: Any) -> dict[str, Any]:
         "sorted_source_ids": ["S-1", "S-2"],
         "editor_name": "Desk Editor",
         "checks": ALL_CHECKS,
+        "no_allegations_attested": True,
     } | overrides
     return sign_and_promote_article(SLUG, conn=conn, clock=lambda: NOW, **values)
 
@@ -832,6 +833,7 @@ def form(**overrides: Any) -> dict[str, str]:
         "role__S-1": "official",
         "role__S-2": "government_record",
         "editor_name": "Desk Editor",
+        "no_allegations_attested": "on",
         **{f"check__{name}": "on" for name in REQUIRED_CHECKS},
     }
     return {
@@ -970,7 +972,7 @@ def test_validate_enables_button_when_everything_passes(
     seed(db)
     html = desk.post(f"/articles/{SLUG}/validate", data=form()).text
     assert "disabled" not in sign_button(html)
-    assert html.count('class="gate ok"') == 6
+    assert html.count('class="gate ok"') == 7
     assert 'hx-swap-oob="true"' in html
 
 
@@ -1013,6 +1015,21 @@ def test_private_person_allegation_blocks_until_reply_logged(
     assert desk.post(f"/articles/{SLUG}/sign", data=blocked).status_code == 422
 
     allowed = blocked | {"right_of_reply_logged": "on"}
+    # An allegation disables the no-allegations attestation, so the checkbox alone
+    # no longer publishes: the reply request must be in the log.
+    assert desk.post(f"/articles/{SLUG}/sign", data=allowed).status_code == 422
+    request = {
+        "subject_name": "Jane Doe",
+        "subject_type": "individual",
+        "contact_method": "phone",
+        "requested_at": "2026-10-01T09:00",
+        "deadline_at": "2026-10-03T09:00",
+        "response_status": "no_response_by_deadline",
+    }
+    assert desk.post(f"/articles/{SLUG}/replies", data=request).status_code == 200
+    # Still refused while the editor attests there are no allegations.
+    assert desk.post(f"/articles/{SLUG}/sign", data=allowed).status_code == 422
+    del allowed["no_allegations_attested"]
     assert desk.post(f"/articles/{SLUG}/sign", data=allowed).status_code == 200
 
 

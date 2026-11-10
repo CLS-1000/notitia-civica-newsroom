@@ -36,6 +36,23 @@ export interface Retraction {
   retracted_at: string;
 }
 
+// One logged right-of-reply request. statement is the Five-Mask sentence the
+// exporter writes, so every page words it the same way.
+export interface Reply {
+  subject_name: string;
+  subject_type: "individual" | "institution";
+  contact_method: string;
+  requested_at: string;
+  deadline_at: string;
+  response_status:
+    | "responded"
+    | "no_response_by_deadline"
+    | "declined_to_comment"
+    | "pending";
+  response_summary: string | null;
+  statement: string;
+}
+
 export interface Article {
   slug: string;
   status: "published" | "retracted";
@@ -53,6 +70,7 @@ export interface Article {
   uncertainty_disclosures: string[];
   evidence_bar: number;
   sources: Source[];
+  replies: Reply[];
   steelman?: Steelman;
   quarantine?: Quarantine;
 }

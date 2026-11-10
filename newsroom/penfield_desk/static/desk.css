@@ -103,7 +103,24 @@ textarea.disclosures,
   resize: vertical;
 }
 
-.corrections form { display: grid; gap: var(--pf-space-2); }
+.corrections form, .reply-add, .reply-update { display: grid; gap: var(--pf-space-2); }
+.replies textarea { flex: none; min-height: 48px; resize: vertical; }
+.replies table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.replies th, .replies td {
+  padding: var(--pf-space-1);
+  border-bottom: 1px solid var(--pf-border);
+  text-align: left;
+  vertical-align: top;
+}
+.replies input[type="datetime-local"] {
+  width: 100%;
+  padding: var(--pf-space-2);
+  border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius);
+  background: var(--pf-bg-input);
+  color: var(--pf-text);
+  font: inherit;
+}
 .corrections del { color: var(--pf-fail); }
 
 .preview {

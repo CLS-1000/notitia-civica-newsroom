@@ -4,6 +4,7 @@ import ArticleCorrections from "../../components/ArticleCorrections.astro";
 import EditorialProofHeader from "../../components/EditorialProofHeader.astro";
 import EpistemicGrid from "../../components/EpistemicGrid.astro";
 import InlineCitation from "../../components/InlineCitation.astro";
+import RightOfReply from "../../components/RightOfReply.astro";
 import RetractionNotice from "../../components/RetractionNotice.astro";
 import SociologyQuarantine from "../../components/SociologyQuarantine.astro";
 import SourceLedgerFooter from "../../components/SourceLedgerFooter.astro";
@@ -131,6 +132,7 @@ const proof = {
     />
     {article.steelman && <SteelmanBox steelman={article.steelman} />}
     {article.quarantine && <SociologyQuarantine quarantine={article.quarantine} />}
+    {article.replies.length > 0 && <RightOfReply replies={article.replies} />}
     <SourceLedgerFooter sources={article.sources} />
     <EditorialProofHeader {...proof} variant="footer" />
   </article>

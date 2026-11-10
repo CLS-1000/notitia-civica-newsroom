@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, Final
 
 _TEASERS: Final = ("here is why", "here's why", "what to know")
@@ -296,6 +297,122 @@ def verify_uncertainty_disclosures(
             "or confirm the draft has no open questions"
         )
     ]
+
+
+REPLY_SUBJECT_TYPES: Final = ("individual", "institution")
+REPLY_CONTACT_METHODS: Final = ("email", "phone", "formal_letter", "spokesperson")
+REPLY_STATUSES: Final = (
+    "responded",
+    "no_response_by_deadline",
+    "declined_to_comment",
+    "pending",
+)
+
+
+def _subject_key(name: str) -> str:
+    return " ".join(name.split()).casefold()
+
+
+# Wording that signals an adverse finding. Any of it makes a logged reply request
+# mandatory, because the "no allegations" attestation would then be false. Unlike
+# the loaded-language check, direct quotes count: a quoted allegation still needs
+# a reply.
+_ADVERSE_TERMS: Final = (
+    *_ALLEGATION_TERMS,
+    "bribe",
+    "bribery",
+    "conflict of interest",
+    "corrupt",
+    "corruption",
+    "falsified",
+    "illegally",
+    "kickback",
+    "kickbacks",
+    "misappropriated",
+    "misappropriation",
+    "misconduct",
+    "negligence",
+    "negligent",
+    "unlawfully",
+)
+ATTESTATION_LOCKED_BADGES: Final = frozenset({"INVESTIGATION"})
+
+
+def adverse_terms(body: str) -> list[str]:
+    """Return the adverse-finding terms in body, in list order."""
+    return [term for term in _ADVERSE_TERMS if _contains_term(body, term)]
+
+
+def verify_right_of_reply_log(
+    records: list[dict[str, Any]],
+    named_subjects: list[str],
+    *,
+    no_allegations_attested: bool = False,
+    body: str = "",
+    badge_type: str = "",
+    now: datetime | None = None,
+) -> list[str]:
+    """Require a logged reply request unless the editor attests there is no need.
+
+    An article needs at least one reply record unless the editor attests it
+    makes no adverse findings or allegations against any named individual or
+    institution. That attestation is refused for an INVESTIGATION and for a
+    body with adverse-finding terms, so leaving the subject list blank can never
+    bypass the log. Each named subject needs a record of their own. No record
+    may still be pending before its deadline: everyone gets the full time they
+    were promised. A pending request whose deadline has passed counts as no
+    response.
+    """
+    moment = now or datetime.now(UTC)
+    subjects = {_subject_key(name): name.strip() for name in named_subjects}
+    subjects.pop("", None)
+    issues: list[str] = []
+
+    locked_by = []
+    if normalize_badge(badge_type) in ATTESTATION_LOCKED_BADGES:
+        locked_by.append(f"badge {normalize_badge(badge_type)}")
+    terms = adverse_terms(body)
+    if terms:
+        locked_by.append("adverse terms " + ", ".join(repr(term) for term in terms))
+
+    if no_allegations_attested and subjects:
+        issues.append(
+            "the no-allegations attestation contradicts the named subjects: "
+            + ", ".join(sorted(subjects.values()))
+        )
+    elif no_allegations_attested and locked_by:
+        issues.append(
+            "the no-allegations attestation is not available here ("
+            + "; ".join(locked_by)
+            + "): log a right-of-reply request"
+        )
+
+    if not records:
+        if subjects:
+            names = ", ".join(sorted(subjects.values()))
+            issues.append(
+                f"allegations name {names}, but no right-of-reply request is logged"
+            )
+        elif locked_by or not no_allegations_attested:
+            issues.append(
+                "no right-of-reply request is logged: log one, or attest the piece "
+                "makes no adverse findings or allegations against anyone named"
+            )
+        return issues
+
+    logged = {_subject_key(str(record["subject_name"])) for record in records}
+    issues.extend(
+        f"no right-of-reply request logged for {name}"
+        for key, name in sorted(subjects.items(), key=lambda item: item[1])
+        if key not in logged
+    )
+    issues.extend(
+        f"reply from {record['subject_name']} is pending until "
+        f"{record['deadline_at'].astimezone(UTC):%Y-%m-%d %H:%M} UTC"
+        for record in records
+        if record["response_status"] == "pending" and record["deadline_at"] > moment
+    )
+    return issues
 
 
 @dataclass(frozen=True, slots=True)
