@@ -1,10 +1,24 @@
 [
   {
-    "slug": "sample-water-audit",
-    "headline": "SAMPLE: Fictional district audit",
-    "corrected_at": "2026-10-02T17:30:00+00:00",
-    "reason": "Sample correction for layout and accessibility checks.",
+    "after": "The audit covered 14 sites.",
     "before": "The audit covered 12 sites.",
-    "after": "The audit covered 14 sites."
+    "corrected_at": "2026-10-02T17:30:00+00:00",
+    "correction_id": "00000000-0000-4000-8000-000000000001",
+    "correction_type": "factual_correction",
+    "editor_name": "Sample Editor",
+    "headline": "SAMPLE: Fictional district audit",
+    "reason": "Sample correction for layout and accessibility checks.",
+    "slug": "sample-water-audit"
+  },
+  {
+    "after": null,
+    "before": null,
+    "corrected_at": "2026-10-03T09:00:00+00:00",
+    "correction_id": "00000000-0000-4000-8000-000000000002",
+    "correction_type": "clarification",
+    "editor_name": "Sample Editor",
+    "headline": "SAMPLE: Fictional district audit",
+    "reason": "Sample clarification with no before or after text.",
+    "slug": "sample-water-audit"
   }
 ]

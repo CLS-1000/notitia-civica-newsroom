@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import ArticleCorrections from "../../components/ArticleCorrections.astro";
 import EditorialProofHeader from "../../components/EditorialProofHeader.astro";
 import EpistemicGrid from "../../components/EpistemicGrid.astro";
 import InlineCitation from "../../components/InlineCitation.astro";
@@ -10,6 +11,7 @@ import SteelmanBox from "../../components/SteelmanBox.astro";
 import { parseBody } from "../../lib/article";
 import {
   articles,
+  correctionsFor,
   formatDate,
   formatDateTime,
   tierClass,
@@ -32,6 +34,7 @@ const { article } = Astro.props;
 const retracted = article.status === "retracted";
 const headline = retracted ? `[RETRACTED] ${article.headline}` : article.headline;
 const blocks = parseBody(article);
+const corrections = correctionsFor(article.slug);
 const sourceById = new Map<string, Source>(
   article.sources.map((item) => [item.source_id, item]),
 );
@@ -58,6 +61,7 @@ const proof = {
       <p class="meta">
         Published <time datetime={article.published_at}>{formatDate(article.published_at)}</time>
       </p>
+      {corrections.length > 0 && <ArticleCorrections corrections={corrections} />}
     </header>
 
     <EditorialProofHeader {...proof} />

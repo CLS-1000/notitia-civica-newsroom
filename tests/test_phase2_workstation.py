@@ -1039,15 +1039,6 @@ def test_no_open_questions_override_allows_sign_off(desk: TestClient, db: Conn) 
     assert article_row(db)[0] == "published"
 
 
-def test_override_box_is_hidden_when_disclosures_exist(
-    desk: TestClient, db: Conn
-) -> None:
-    seed(db)
-    assert (
-        'name="no_open_questions_confirmed"' not in desk.get(f"/?article={SLUG}").text
-    )
-
-
 def test_badge_is_saved_and_applied_at_sign_off(desk: TestClient, db: Conn) -> None:
     seed(db)
     brief = form(

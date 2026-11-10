@@ -36,10 +36,13 @@ from newsroom.dors_venabili.gatekeeper import (
     verify_uncertainty_disclosures,
 )
 from newsroom.harlan_eternity.signoff import (
+    CORRECTION_TYPES,
     DEFAULT_DSN,
     REQUIRED_CHECKS,
+    CorrectionError,
     SignOffError,
     missing_checks,
+    record_correction,
     sign_and_promote_article,
 )
 from newsroom.penfield_desk.claude_drafter import (
@@ -189,6 +192,18 @@ def badge_from_form(form: dict[str, Any], article: dict[str, Any]) -> str:
     return badge if badge in BADGES else str(article["badge_type"])
 
 
+def disclosures_from_form(form: dict[str, Any], article: dict[str, Any]) -> list[str]:
+    """Return one disclosure per non-blank line, or the stored list if absent."""
+    if "uncertainty_disclosures" not in form:
+        return [str(item) for item in article["uncertainty_disclosures"]]
+    lines = str(form["uncertainty_disclosures"]).splitlines()
+    return [line.strip() for line in lines if line.strip()]
+
+
+def confirmed_from_form(form: dict[str, Any]) -> bool:
+    return form.get("no_open_questions_confirmed") == "on"
+
+
 def checks_from_form(form: dict[str, Any]) -> dict[str, bool]:
     return {name: form.get(f"check__{name}") == "on" for name in REQUIRED_CHECKS}
 
@@ -261,8 +276,7 @@ def create_app(
                 "uncertainty",
                 "Uncertainty disclosures",
                 verify_uncertainty_disclosures(
-                    article["uncertainty_disclosures"],
-                    form.get("no_open_questions_confirmed") == "on",
+                    disclosures_from_form(form, article), confirmed_from_form(form)
                 ),
             )
         )
@@ -288,7 +302,8 @@ def create_app(
             """
             UPDATE articles
             SET headline = %s, deck = %s, body_markdown = %s, source_roles = %s,
-                badge_type = %s, is_private_person = %s, right_of_reply_logged = %s
+                badge_type = %s, is_private_person = %s, right_of_reply_logged = %s,
+                uncertainty_disclosures = %s, no_open_questions_confirmed = %s
             WHERE article_id = %s AND status = ANY(%s::pub_status_enum[])
             """,
             (
@@ -299,10 +314,26 @@ def create_app(
                 badge_from_form(form, article),
                 form.get("is_private_person") == "on",
                 form.get("right_of_reply_logged") == "on",
+                Jsonb(disclosures_from_form(form, article)),
+                confirmed_from_form(form),
                 article["article_id"],
                 list(EDITABLE_STATUSES),
             ),
         )
+
+    def fetch_corrections(
+        conn: psycopg.Connection[Any], article_id: uuid.UUID
+    ) -> list[dict[str, Any]]:
+        with conn.cursor(row_factory=dict_row) as cursor:
+            return cursor.execute(
+                """
+                SELECT correction_type, original_text, corrected_text, explanation,
+                       editor_signature, corrected_at
+                FROM article_corrections WHERE article_id = %s
+                ORDER BY corrected_at, correction_id
+                """,
+                (article_id,),
+            ).fetchall()
 
     @app.get("/", response_class=HTMLResponse)
     def desk(
@@ -327,6 +358,7 @@ def create_app(
             "required_checks": REQUIRED_CHECKS,
             "source_roles": SOURCE_ROLES,
             "badges": BADGES,
+            "correction_types": CORRECTION_TYPES,
             "article": None,
             "sources": [],
         }
@@ -341,10 +373,14 @@ def create_app(
                 "badge_type": row["badge_type"],
                 "is_private_person": "on" if row["is_private_person"] else "",
                 "right_of_reply_logged": "on" if row["right_of_reply_logged"] else "",
+                "no_open_questions_confirmed": (
+                    "on" if row["no_open_questions_confirmed"] else ""
+                ),
                 **{f"role__{key}": value for key, value in row["source_roles"].items()},
             }
             context.update(evaluate(conn, row, form))
             context["sources"] = sources
+            context["corrections"] = fetch_corrections(conn, row["article_id"])
             context["lead"] = next(
                 (item for item in leads if item["slug"] == article), None
             )
@@ -467,6 +503,8 @@ def create_app(
                 str(form.get("editor_name", "")),
                 checks_from_form(form),
                 conn=conn,
+                uncertainty_disclosures=disclosures_from_form(form, article),
+                no_open_questions_confirmed=confirmed_from_form(form),
             )
         except SignOffError as error:
             context = {**state, "refused": True, "sign_issues": error.issues}
@@ -474,6 +512,37 @@ def create_app(
                 request, "_live.html", context, status_code=422
             )
         return templates.TemplateResponse(request, "_signed.html", {"result": result})
+
+    @app.post("/articles/{slug}/corrections", response_class=HTMLResponse)
+    async def correct(
+        request: Request,
+        slug: str,
+        conn: DbConn,
+    ) -> HTMLResponse:
+        form = dict(await request.form())
+        article = fetch_article(conn, slug)
+        issues: list[str] = []
+        try:
+            record_correction(
+                slug,
+                str(form.get("correction_type", "")),
+                str(form.get("explanation", "")),
+                str(form.get("editor_signature", "")),
+                original_text=str(form.get("original_text", "")),
+                corrected_text=str(form.get("corrected_text", "")),
+                conn=conn,
+            )
+        except CorrectionError as error:
+            issues = error.issues
+        context = {
+            "article": article,
+            "correction_types": CORRECTION_TYPES,
+            "corrections": fetch_corrections(conn, article["article_id"]),
+            "correction_issues": issues,
+        }
+        return templates.TemplateResponse(
+            request, "_corrections.html", context, status_code=422 if issues else 200
+        )
 
     return app
 

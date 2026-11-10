@@ -96,6 +96,16 @@ textarea {
   font-size: 13px;
 }
 
+textarea.disclosures,
+.corrections textarea {
+  flex: none;
+  min-height: 56px;
+  resize: vertical;
+}
+
+.corrections form { display: grid; gap: var(--pf-space-2); }
+.corrections del { color: var(--pf-fail); }
+
 .preview {
   flex: 1 1 40%;
   min-height: 0;

@@ -46,6 +46,7 @@
 
   .quarantine { border-style: dashed; }
   .retraction-notice { border: 2pt solid var(--nc-print-ink); }
+  .correction-notice { border: 1pt solid var(--nc-print-ink); break-inside: avoid; }
 
   .prose a[href^="http"]::after, .brief-card a[href^="http"]::after, .ledger a[href^="http"]::after {
     content: " (" attr(href) ")";

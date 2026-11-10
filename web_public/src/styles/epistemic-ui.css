@@ -132,6 +132,34 @@
   letter-spacing: 0.05em;
 }
 
+.correction-notice {
+  margin-block: var(--nc-space-4);
+  padding: var(--nc-space-3) var(--nc-space-4);
+  background: var(--nc-uncertain-bg);
+  border: 2px solid var(--nc-uncertain);
+  border-left-width: 6px;
+  color: var(--nc-ink-primary);
+  break-inside: avoid;
+}
+
+.correction-notice p { margin-bottom: var(--nc-space-2); }
+.correction-notice p:last-child { margin-bottom: 0; }
+.correction-notice del { background: var(--nc-diff-del-bg); color: var(--nc-diff-del); }
+.correction-notice ins {
+  background: var(--nc-diff-ins-bg);
+  color: var(--nc-diff-ins);
+  text-decoration-thickness: 2px;
+}
+
+.correction-entry {
+  padding-block: var(--nc-space-2);
+  border-top: 1px solid var(--nc-rule);
+}
+
+.correction-label {
+  font: 700 var(--nc-text-lg) var(--nc-font-ui);
+}
+
 .retraction-list { margin: 0; padding: 0; list-style: none; }
 .retraction-list li { padding-block: var(--nc-space-3); border-bottom: 1px solid var(--nc-rule); }
 .retraction-list p { margin-bottom: var(--nc-space-1); }

@@ -94,6 +94,9 @@
       </div>
       <label><input type="checkbox" name="is_private_person"{% if article.is_private_person %} checked{% endif %}> Story concerns a private person</label>
       <label><input type="checkbox" name="right_of_reply_logged"{% if article.right_of_reply_logged %} checked{% endif %}> Right of reply logged</label>
+      <label>Uncertainty disclosures (one per line: what is unknown or unverified)
+        <textarea name="uncertainty_disclosures" class="disclosures">{{ article.uncertainty_disclosures | join("\n") }}</textarea>
+      </label>
       <button type="button" class="secondary" hx-post="/articles/{{ article.slug }}/save" hx-include="#draft-form" hx-swap="none">Save draft</button>
     </form>
   </section>
@@ -105,17 +108,10 @@
       {% for name, label in required_checks.items() %}
       <label><input type="checkbox" form="draft-form" name="check__{{ name }}"> {{ label }}</label>
       {% endfor %}
-      {% if not article.uncertainty_disclosures %}
-      <label><input type="checkbox" form="draft-form" name="no_open_questions_confirmed"> I confirm this draft has no open questions or unverified points</label>
-      {% endif %}
+      <label><input type="checkbox" form="draft-form" name="no_open_questions_confirmed"{% if article.no_open_questions_confirmed %} checked{% endif %}> I confirm this draft has no open questions or unverified points</label>
       <label>Editor name <input type="text" form="draft-form" name="editor_name" autocomplete="name"></label>
     </div>
-    {% if article.uncertainty_disclosures %}
-    <div>
-      <h2>Uncertainty Disclosures</h2>
-      <ul>{% for item in article.uncertainty_disclosures %}<li>{{ item }}</li>{% endfor %}</ul>
-    </div>
-    {% endif %}
+    {% if article.status == "published" %}{% include "_corrections.html" %}{% endif %}
   </section>
   {% else %}
   <section class="pane"><h1>Draft</h1><p class="muted">Select a lead to begin.</p></section>

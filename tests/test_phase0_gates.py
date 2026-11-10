@@ -287,7 +287,10 @@ def insert_source(conn: Conn, source_id: str = "S-1") -> None:
         ),
         pytest.param("DELETE FROM source_registry", id="delete"),
         pytest.param("TRUNCATE source_registry", id="truncate"),
-        pytest.param("TRUNCATE articles, source_registry", id="truncate-multi"),
+        pytest.param(
+            "TRUNCATE articles, source_registry, article_corrections",
+            id="truncate-multi",
+        ),
     ],
 )
 def test_source_registry_refuses_mutation(db: Conn, statement: str) -> None:

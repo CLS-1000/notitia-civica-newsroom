@@ -1,0 +1,37 @@
+---
+import { correctionLabel, formatDateTime } from "../lib/data";
+import type { Correction } from "../lib/data";
+
+interface Props {
+  corrections: Correction[];
+}
+
+// Shown above the body, so a reader meets the correction before the claim it fixes.
+const { corrections } = Astro.props;
+---
+
+<section class="correction-notice" aria-label="Corrections to this article">
+  <p class="correction-label">
+    {corrections.length === 1 ? "This article has been corrected" : `This article has ${corrections.length} corrections`}
+  </p>
+  {
+    corrections.map((correction) => (
+      <div class="correction-entry">
+        <p class="meta">
+          <strong>{correctionLabel(correction)}</strong>,{" "}
+          <time datetime={correction.corrected_at}>
+            {formatDateTime(correction.corrected_at)} UTC
+          </time>
+        </p>
+        <p>{correction.reason}</p>
+        {correction.before && (
+          <p class="diff-line"><strong>Before:</strong> <del>{correction.before}</del></p>
+        )}
+        {correction.after && (
+          <p class="diff-line"><strong>After:</strong> <ins>{correction.after}</ins></p>
+        )}
+      </div>
+    ))
+  }
+  <p>The text below is the original signed version. The editorial proof covers that text, and the corrections above apply to it.</p>
+</section>
