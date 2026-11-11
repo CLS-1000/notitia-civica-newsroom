@@ -1,8 +1,18 @@
-"""Delos: drug supply bottlenecks and shipping chokepoint drops.
+"""Delos: drug supply bottlenecks, shortage cascades, and shipping chokepoint drops.
 
 A bottleneck is a Class I or II recall of a generic drug that is in shortage with
 one company on the shortage list. That list names firms reporting a shortage, not
 every approved manufacturer, so 'single source' is a lead to check, not a finding.
+
+A shortage cascade is a Class I or II recall of an active pharmaceutical
+ingredient (API) or a sterile injectable whose drug has one or two approved
+sources in the FDA NDC Directory, whether or not it is in shortage yet. Sources
+are counted as distinct approved applications (ANDA, NDA, BLA) among finished
+products with an unexpired listing, so a repackager selling another firm's
+product does not count twice. A listing shows a product may be marketed, not that
+it is, and the Directory does not say where a product is made: the count is a
+screen for an editor to check, not a finding. Cascades score 80 or more and carry
+priority HIGH in the lead's prompt.
 
 A chokepoint drop compares mean daily transits over the latest 7 days with the 30
 days before them, which keeps weekly traffic patterns out of the comparison.
@@ -19,6 +29,7 @@ from urllib.parse import quote
 from spec1_bridge.adapters.base_lazlong import (
     EvidenceTarget,
     LazLongAdapter,
+    PollError,
     PollRequest,
     clamp_score,
     host_of,
@@ -28,6 +39,7 @@ from spec1_bridge.contracts import SourceArtifact
 
 ENFORCEMENT_URL: Final = "https://api.fda.gov/drug/enforcement.json"
 SHORTAGES_URL: Final = "https://api.fda.gov/drug/shortages.json"
+NDC_URL: Final = "https://api.fda.gov/drug/ndc.json"
 PORTWATCH_URL: Final = (
     "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/"
     "Daily_Chokepoints_Data/FeatureServer/0/query"
@@ -50,6 +62,28 @@ UNAVAILABLE_POINTS: Final = 10.0
 CHOKEPOINT_BASE_POINTS: Final = 40.0
 CHOKEPOINT_POINTS_PER_PERCENT: Final = 2.0
 
+# Cascade: a bottleneck generic with at most this many approved sources.
+CASCADE_MAX_SOURCES: Final = 2
+CASCADE_BASE_POINTS: Final = 80.0
+CASCADE_CLASS_I_POINTS: Final = 10.0
+CASCADE_SINGLE_SOURCE_POINTS: Final = 5.0
+CASCADE_IN_SHORTAGE_POINTS: Final = 5.0
+CASCADE_PRIORITY: Final = "HIGH"
+APPROVED_CATEGORIES: Final = frozenset({"ANDA", "NDA", "NDA AUTHORIZED GENERIC", "BLA"})
+
+_API_PATTERN: Final = re.compile(
+    r"\b(?:API|active pharmaceutical ingredient|bulk drug substance|drug substance)\b",
+    re.IGNORECASE,
+)
+_STERILE_INJECTABLE_PATTERN: Final = re.compile(
+    r"\b(?:injections?|injectable|infusion|intravenous|intramuscular|subcutaneous|"
+    r"intrathecal|sterile|for injection)\b",
+    re.IGNORECASE,
+)
+_PARENTERAL_ROUTES: Final = frozenset(
+    {"INTRAVENOUS", "INTRAMUSCULAR", "SUBCUTANEOUS", "INTRATHECAL", "INTRAVITREAL"}
+)
+
 _DOSAGE_WORDS: Final = frozenset(
     {
         "capsule",
@@ -71,6 +105,62 @@ def normalize_generic(name: str) -> str:
     """Reduce a drug name to its active ingredient words."""
     words = re.findall(r"[a-z]+", name.lower())
     return " ".join(word for word in words if word not in _DOSAGE_WORDS)
+
+
+def _openfda_block(recall: dict[str, Any]) -> dict[str, Any]:
+    block = recall.get("openfda")
+    return block if isinstance(block, dict) else {}
+
+
+def recall_scope(recall: dict[str, Any]) -> str | None:
+    """Return 'api' or 'sterile_injectable' when a recall can start a cascade."""
+    description = str(recall.get("product_description", ""))
+    if _API_PATTERN.search(description):
+        return "api"
+    openfda = _openfda_block(recall)
+    routes = {str(route).upper() for route in openfda.get("route", []) or []}
+    if _STERILE_INJECTABLE_PATTERN.search(description) or routes & _PARENTERAL_ROUTES:
+        return "sterile_injectable"
+    return None
+
+
+def recall_generics(recall: dict[str, Any]) -> list[str]:
+    """Return the normalized generic names openFDA attaches to a recall."""
+    openfda = _openfda_block(recall)
+    names = openfda.get("generic_name", []) or []
+    found = [normalize_generic(str(name)) for name in names if str(name).strip()]
+    return list(dict.fromkeys(name for name in found if name))
+
+
+def approved_sources(listings: list[dict[str, Any]], today: date) -> dict[str, Any]:
+    """Count distinct approved applications among a drug's current NDC listings.
+
+    Repackagers and relabelers list under the application of the firm that makes
+    the product, so counting applications rather than labelers keeps one source
+    from counting twice. Unapproved categories carry no application to count.
+    """
+    applications: set[str] = set()
+    labelers: set[str] = set()
+    for row in listings:
+        if row.get("finished") is False:
+            continue
+        expires = _fda_date(row.get("listing_expiration_date"))
+        if expires is not None and expires.date() < today:
+            continue
+        category = str(row.get("marketing_category", "")).upper()
+        application = str(row.get("application_number") or "").strip().upper()
+        if category in APPROVED_CATEGORIES and application:
+            applications.add(application)
+            labelers.add(str(row.get("labeler_name", "")).strip())
+    return {
+        "applications": sorted(applications),
+        "labelers": sorted(name for name in labelers if name),
+        "listing_count": len(listings),
+    }
+
+
+def _ndc_search(generic: str) -> str:
+    return f'generic_name:"{generic}" AND finished:true'
 
 
 def _openfda_query_url(base: str, field_name: str, value: str) -> str:
@@ -202,19 +292,36 @@ class DelosEconAdapter(LazLongAdapter):
                     r"[a-z]+", str(recall.get("product_description", "")).lower()
                 )
             )
-            for generic, rows in shortages.items():
+            scope = (
+                recall_scope(recall)
+                if str(recall.get("classification")) in CLASS_POINTS
+                else None
+            )
+            in_description = [
+                generic for generic in shortages if f" {generic} " in f" {description} "
+            ]
+            # A cascade can start before any shortage is reported, so openFDA's own
+            # generic names count as well as names matched to the shortage list.
+            generics = dict.fromkeys(
+                [*in_description, *(recall_generics(recall) if scope else [])]
+            )
+            for generic in generics:
+                rows = shortages.get(generic, [])
                 companies = {str(row.get("company_name")) for row in rows}
-                if len(companies) == 1 and f" {generic} " in f" {description} ":
-                    records.append(
-                        {
-                            "kind": "fda_bottleneck",
-                            "recall_number": recall_number,
-                            "recall": recall,
-                            "generic": generic,
-                            "shortages": rows,
-                            "company": next(iter(companies)),
-                        }
-                    )
+                single = len(companies) == 1
+                if not single and scope is None:
+                    continue
+                records.append(
+                    {
+                        "kind": "fda_bottleneck",
+                        "recall_number": recall_number,
+                        "recall": recall,
+                        "generic": generic,
+                        "shortages": rows,
+                        "company": next(iter(companies)) if single else None,
+                        "scope": scope,
+                    }
+                )
         return records
 
     @staticmethod
@@ -258,6 +365,33 @@ class DelosEconAdapter(LazLongAdapter):
             raise ValueError(f"{raw_record['recall_number']} has no usable date")
         return timestamp
 
+    def enrich_record(self, raw_record: dict[str, Any]) -> dict[str, Any]:
+        """Count a cascade candidate's approved sources in the NDC Directory."""
+        if raw_record["kind"] != "fda_bottleneck" or not raw_record.get("scope"):
+            return raw_record
+        params = {"search": _ndc_search(raw_record["generic"]), "limit": "1000"}
+        try:
+            payload = self._get(NDC_URL, params).json()
+        except PollError as error:
+            # openFDA answers a search with no matches with HTTP 404.
+            if str(error) != "HTTP 404":
+                raise
+            payload = {"results": []}
+        except ValueError as error:
+            raise PollError(f"invalid NDC JSON: {error}", retryable=True) from error
+        listings = payload.get("results", []) if isinstance(payload, dict) else []
+        sources = approved_sources(
+            listings if isinstance(listings, list) else [], self._clock().date()
+        )
+        count = len(sources["applications"])
+        cascade = 1 <= count <= CASCADE_MAX_SOURCES
+        return {
+            **raw_record,
+            "ndc": sources,
+            "cascade": cascade,
+            "priority": CASCADE_PRIORITY if cascade else None,
+        }
+
     def compute_signal_score(self, raw_record: dict[str, Any]) -> float:
         if raw_record["kind"] == "chokepoint_drop":
             percent = -raw_record["divergence"] * 100
@@ -265,10 +399,21 @@ class DelosEconAdapter(LazLongAdapter):
             return clamp_score(
                 CHOKEPOINT_BASE_POINTS + over_threshold * CHOKEPOINT_POINTS_PER_PERCENT
             )
-        score = CLASS_POINTS.get(str(raw_record["recall"].get("classification")), 0.0)
-        if score == 0.0:
+        classification = str(raw_record["recall"].get("classification"))
+        if classification not in CLASS_POINTS:
             return 0.0
-        score += SINGLE_SOURCE_POINTS
+        if raw_record.get("cascade"):
+            score = CASCADE_BASE_POINTS
+            if classification == "Class I":
+                score += CASCADE_CLASS_I_POINTS
+            if len(raw_record["ndc"]["applications"]) == 1:
+                score += CASCADE_SINGLE_SOURCE_POINTS
+            if raw_record["shortages"]:
+                score += CASCADE_IN_SHORTAGE_POINTS
+            return clamp_score(score)
+        if raw_record.get("company") is None:
+            return 0.0
+        score = CLASS_POINTS[classification] + SINGLE_SOURCE_POINTS
         availability = {
             str(row.get("availability", "")).lower() for row in raw_record["shortages"]
         }
@@ -291,7 +436,7 @@ class DelosEconAdapter(LazLongAdapter):
                     metadata={"port_id": raw_record["port_id"]},
                 )
             ]
-        return [
+        targets = [
             EvidenceTarget(
                 url=_openfda_query_url(
                     ENFORCEMENT_URL, "recall_number", raw_record["recall_number"]
@@ -299,18 +444,34 @@ class DelosEconAdapter(LazLongAdapter):
                 tier="tier_1_primary",
                 kind="fda_enforcement",
                 excerpt=raw_record["recall"].get("reason_for_recall"),
-            ),
-            EvidenceTarget(
-                url=_openfda_query_url(
-                    SHORTAGES_URL,
-                    "generic_name",
-                    str(raw_record["shortages"][0]["generic_name"]),
-                ),
-                tier="tier_1_primary",
-                kind="fda_shortage",
-                excerpt=raw_record["shortages"][0].get("presentation"),
-            ),
+            )
         ]
+        if raw_record["shortages"]:
+            targets.append(
+                EvidenceTarget(
+                    url=_openfda_query_url(
+                        SHORTAGES_URL,
+                        "generic_name",
+                        str(raw_record["shortages"][0]["generic_name"]),
+                    ),
+                    tier="tier_1_primary",
+                    kind="fda_shortage",
+                    excerpt=raw_record["shortages"][0].get("presentation"),
+                )
+            )
+        if raw_record.get("cascade"):
+            # The same query that produced the count, so the count can be rechecked.
+            targets.append(
+                EvidenceTarget(
+                    url=f"{NDC_URL}?search="
+                    + quote(_ndc_search(raw_record["generic"]), safe=":")
+                    + "&limit=1000",
+                    tier="tier_1_primary",
+                    kind="fda_ndc",
+                    metadata={"applications": raw_record["ndc"]["applications"]},
+                )
+            )
+        return targets
 
     def verify_evidence_bar(self, artifacts: list[SourceArtifact]) -> bool:
         kinds = {
@@ -319,8 +480,10 @@ class DelosEconAdapter(LazLongAdapter):
             if item.tier == "tier_1_primary"
             and host_of(item.origin_url) in {FDA_HOST, PORTWATCH_HOST}
         }
-        return {"fda_enforcement", "fda_shortage"} <= kinds or (
-            "portwatch_transits" in kinds
+        return (
+            {"fda_enforcement", "fda_shortage"} <= kinds
+            or {"fda_enforcement", "fda_ndc"} <= kinds
+            or "portwatch_transits" in kinds
         )
 
     def default_public_question(self, record: dict[str, Any]) -> str:
@@ -328,6 +491,11 @@ class DelosEconAdapter(LazLongAdapter):
             return (
                 f"Why did ship transits through {record['port_name']} fall "
                 f"{abs(record['divergence']):.0%}, and what could the drop disrupt?"
+            )
+        if record.get("cascade"):
+            return (
+                f"Could patients face a regional shortage of {record['generic']} "
+                f"following FDA recall {record['recall_number']}?"
             )
         return (
             f"Could patients lose access to {record['generic']} after recall "
@@ -339,6 +507,17 @@ class DelosEconAdapter(LazLongAdapter):
             return (
                 "A sustained drop at a shipping chokepoint can delay goods and "
                 "raise prices far from the port."
+            )
+        if record.get("cascade"):
+            count = len(record["ndc"]["applications"])
+            sources = (
+                "only one approved source"
+                if count == 1
+                else "only two approved sources"
+            )
+            return (
+                f"{record['generic'].capitalize()} has {sources} listed in the FDA NDC "
+                "Directory, so a recall can leave patients with few or no alternatives."
             )
         return (
             "Patients who depend on a generic drug with one reported supplier can "
@@ -363,6 +542,34 @@ class DelosEconAdapter(LazLongAdapter):
                 "Assess what could explain this drop and what it would disrupt.",
             )
         recall = record["recall"]
+        if record.get("cascade"):
+            sources = record["ndc"]
+            return render_prompt(
+                f"Possible shortage cascade: {record['generic']}",
+                {
+                    "Priority": record["priority"],
+                    "Recall": f"{record['recall_number']} ({recall.get('classification')})",
+                    "Recalling firm": recall.get("recalling_firm"),
+                    "Product": recall.get("product_description"),
+                    "Reason": recall.get("reason_for_recall"),
+                    "Recall scope": str(record["scope"]).replace("_", " "),
+                    "Approved sources in NDC Directory": (
+                        f"{len(sources['applications'])} "
+                        f"({', '.join(sources['applications'])})"
+                    ),
+                    "Labelers on those applications": ", ".join(sources["labelers"])
+                    or "none named",
+                    "On FDA shortage list": (
+                        record["shortages"][0].get("availability")
+                        if record["shortages"]
+                        else "not listed"
+                    ),
+                },
+                artifacts,
+                "Confirm which approved sources are actually marketing the product, "
+                "since an NDC listing does not prove supply, then assess how long "
+                "existing stock covers patients and who is most exposed.",
+            )
         return render_prompt(
             f"Possible single-source bottleneck: {record['generic']}",
             {
