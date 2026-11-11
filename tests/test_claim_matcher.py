@@ -773,8 +773,10 @@ def triage_main(
 ) -> list[tuple[str, Any]]:
     calls: list[tuple[str, Any]] = []
 
-    def fake_matcher(cache: Any, _conn: Any, _enricher: Any) -> Any:
-        calls.append(("claim_matcher", cache))
+    def fake_matcher(
+        cache: Any, _conn: Any, _enricher: Any, *, api_key: str | None = None
+    ) -> Any:
+        calls.append(("claim_matcher", (cache, api_key)))
         return mycroft_triage.TriageReport()
 
     def fake_run(adapter: Any, _conn: Any, _enricher: Any) -> Any:
@@ -792,8 +794,9 @@ def test_triage_runs_the_matcher_with_the_cache_flag(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.delenv("CLAIM_CACHE_PATH", raising=False)
+    monkeypatch.delenv("GOOGLE_FACTCHECK_API_KEY", raising=False)
     calls = triage_main(monkeypatch, ["--claim-matcher-cache", "/tmp/cr.db"])
-    assert calls == [("claim_matcher", "/tmp/cr.db")]
+    assert calls == [("claim_matcher", ("/tmp/cr.db", None))]
     assert '"claim_matcher": {"written": 0, "rejected": 0}' in capsys.readouterr().out
 
 
@@ -801,11 +804,100 @@ def test_triage_runs_the_matcher_from_the_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("CLAIM_CACHE_PATH", "/tmp/env-cr.db")
-    assert triage_main(monkeypatch, []) == [("claim_matcher", "/tmp/env-cr.db")]
+    monkeypatch.setenv("GOOGLE_FACTCHECK_API_KEY", "env-key")
+    assert triage_main(monkeypatch, []) == [
+        ("claim_matcher", ("/tmp/env-cr.db", "env-key"))
+    ]
 
 
 def test_triage_skips_the_matcher_without_a_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("CLAIM_CACHE_PATH", raising=False)
+    monkeypatch.delenv("GOOGLE_FACTCHECK_API_KEY", raising=False)
     assert triage_main(monkeypatch, []) == []
+
+
+def test_triage_passes_the_key_flag_with_the_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CLAIM_CACHE_PATH", raising=False)
+    monkeypatch.delenv("GOOGLE_FACTCHECK_API_KEY", raising=False)
+    argv = ["--claim-matcher-cache", "/tmp/cr.db", "--factcheck-api-key", "k"]
+    assert triage_main(monkeypatch, argv) == [("claim_matcher", ("/tmp/cr.db", "k"))]
+
+
+def test_a_key_alone_syncs_into_the_default_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CLAIM_CACHE_PATH", raising=False)
+    monkeypatch.setenv("GOOGLE_FACTCHECK_API_KEY", "env-key")
+    assert triage_main(monkeypatch, []) == [
+        ("claim_matcher", ("data/claimreview_cache.db", "env-key"))
+    ]
+
+
+def test_triage_with_a_key_syncs_fresh_debunks_into_the_cache(
+    tmp_path: Path,
+    db: Conn,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.delenv("GOOGLE_FACTCHECK_API_KEY", raising=False)
+    caplog.set_level("INFO")
+    observe(db)
+    cache = tmp_path / "claimreview.db"
+    mock = router(claim_payload(politifact(), ap()))
+
+    report = run_claim_matcher(
+        cache, db, ollama()[0], NOW, api_key=FACTCHECK_KEY, **options(tmp_path, mock)
+    )
+
+    assert len(report.written) == 1
+    [call] = mock.calls_to(FACTCHECK_API)
+    assert call.headers["x-goog-api-key"] == FACTCHECK_KEY
+    assert "syncing ClaimReview results" in caplog.text
+    assert FACTCHECK_KEY not in caplog.text
+    synced = matcher(tmp_path, router(), api_key=None).cache.count()
+    assert synced == 1
+
+
+def test_keyless_triage_with_an_empty_cache_says_so(
+    tmp_path: Path,
+    db: Conn,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.delenv("GOOGLE_FACTCHECK_API_KEY", raising=False)
+    caplog.set_level("INFO")
+    observe(db)
+    mock = router()
+
+    report = run_claim_matcher(
+        tmp_path / "empty.db", db, ollama()[0], NOW, **options(tmp_path, mock)
+    )
+
+    assert report.written == [] and report.rejected == []
+    assert mock.requests == []
+    assert "ClaimReview cache" in caplog.text and "is empty" in caplog.text
+
+
+def test_keyless_triage_with_a_cache_does_not_warn(
+    tmp_path: Path,
+    db: Conn,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.delenv("GOOGLE_FACTCHECK_API_KEY", raising=False)
+    caplog.set_level("INFO")
+    observe(db)
+    matcher(tmp_path, router(), api_key=None).cache.add(
+        parse_claims(claim_payload(politifact(), ap()))
+    )
+
+    run_claim_matcher(
+        tmp_path / "claimreview.db", db, ollama()[0], NOW, **options(tmp_path, router())
+    )
+
+    assert "is empty" not in caplog.text
+    assert "matching 1 Domain 6 narratives against 1 cached claims" in caplog.text

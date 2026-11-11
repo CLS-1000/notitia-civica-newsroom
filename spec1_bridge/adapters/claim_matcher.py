@@ -400,6 +400,11 @@ class ClaimReviewCache:
                     ),
                 )
 
+    def count(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT count(*) FROM claims").fetchone()
+        return int(row[0]) if row else 0
+
     def all(self) -> list[DocumentedClaim]:
         with self._connect() as conn:
             rows = conn.execute(
@@ -616,6 +621,11 @@ class ClaimMatcherAdapter(LazLongAdapter):
     @property
     def cache(self) -> ClaimReviewCache:
         return self._cache
+
+    @property
+    def syncs(self) -> bool:
+        """Whether a harvest pulls fresh ClaimReview results: only with a key."""
+        return self._api_key is not None
 
     def auth_headers(self) -> dict[str, str]:
         return {"X-Goog-Api-Key": self._api_key} if self._api_key else {}

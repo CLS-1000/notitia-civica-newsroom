@@ -41,6 +41,9 @@ from spec1_bridge.adapters.base_lazlong import (
     read_artifact_text,
 )
 from spec1_bridge.adapters.claim_matcher import (
+    DEFAULT_CACHE_PATH as CLAIM_CACHE_DEFAULT,
+)
+from spec1_bridge.adapters.claim_matcher import (
     ClaimMatcherAdapter,
     load_narrative_clusters,
 )
@@ -476,22 +479,49 @@ def run_claim_matcher(
     conn: Connection,
     enricher: OllamaEnricher,
     now: datetime | None = None,
+    *,
+    api_key: str | None = None,
     **adapter_options: Any,
 ) -> TriageReport:
     """Match recent Domain 6 narratives against the ClaimReview cache, then triage.
 
     Leads are ZOMBIE_CLAIM_RECYCLED: a narrative reusing the wording of a claim
-    fact-checkers debunked over 180 days earlier. With GOOGLE_FACTCHECK_API_KEY
-    set the cache is refreshed from the Fact Check Tools API first.
+    fact-checkers debunked over 180 days earlier. With a Fact Check Tools API key
+    (api_key, else GOOGLE_FACTCHECK_API_KEY) fresh ClaimReview results are synced
+    into the cache first; without one the existing cache file is used as is.
     """
     moment = now if now is not None else datetime.now(UTC)
     clusters = load_narrative_clusters(conn, moment)
-    logger.info("claim_matcher: %d Domain 6 narratives to check", len(clusters))
     adapter = ClaimMatcherAdapter(
         clusters,
+        api_key,
         cache_path=Path(cache_path),
         **({"clock": lambda: moment} | adapter_options),
     )
+    cached = adapter.cache.count()
+    if adapter.syncs:
+        logger.info(
+            "claim_matcher: syncing ClaimReview results for %d Domain 6 narratives "
+            "into %s (%d claims cached)",
+            len(clusters),
+            cache_path,
+            cached,
+        )
+    elif cached == 0:
+        logger.info(
+            "claim_matcher: the ClaimReview cache at %s is empty and no Fact Check "
+            "API key is set, so no claim can match; set --factcheck-api-key or "
+            "GOOGLE_FACTCHECK_API_KEY to fill it",
+            cache_path,
+        )
+    else:
+        logger.info(
+            "claim_matcher: keyless, matching %d Domain 6 narratives against %d "
+            "cached claims in %s",
+            len(clusters),
+            cached,
+            cache_path,
+        )
     return run_adapter(adapter, conn, enricher)
 
 
@@ -551,6 +581,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--factcheck-api-key",
+        default=os.environ.get("GOOGLE_FACTCHECK_API_KEY"),
+        help=(
+            "Google Fact Check Tools API key, to sync fresh ClaimReview results "
+            "into the claim matcher's cache (default: $GOOGLE_FACTCHECK_API_KEY, "
+            "which keeps the key out of the process list). Without one the "
+            "existing cache is used"
+        ),
+    )
+    parser.add_argument(
         "--proc-track-only",
         action="store_true",
         help="Run only the proc_track import, no network adapters",
@@ -562,6 +602,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--proc-track-path needs --proc-track-session or --session-key")
     if args.proc_track_only and not args.proc_track_path:
         parser.error("--proc-track-only needs --proc-track-path")
+
+    # A key alone is enough to run the matcher: it syncs into the default cache.
+    claim_cache = args.claim_matcher_cache or (
+        str(CLAIM_CACHE_DEFAULT) if args.factcheck_api_key else None
+    )
 
     adapters: list[LazLongAdapter] = []
     if not args.proc_track_only:
@@ -578,9 +623,9 @@ def main(argv: list[str] | None = None) -> int:
             adapter.adapter_name: run_adapter(adapter, conn, enricher)
             for adapter in adapters
         }
-        if args.claim_matcher_cache and not args.proc_track_only:
+        if claim_cache and not args.proc_track_only:
             reports["claim_matcher"] = run_claim_matcher(
-                args.claim_matcher_cache, conn, enricher
+                claim_cache, conn, enricher, api_key=args.factcheck_api_key
             )
         if args.pdx1_store:
             reports["pdx1_importer"] = run_pdx1(
