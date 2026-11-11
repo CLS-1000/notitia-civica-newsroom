@@ -31,6 +31,7 @@ from spec1_bridge.adapters.base_lazlong import (
 )
 from spec1_bridge.adapters.delos_econ import (
     ENFORCEMENT_URL,
+    NDC_URL,
     PORTWATCH_URL,
     SHORTAGES_URL,
     DelosEconAdapter,
@@ -350,6 +351,25 @@ def fda_payload(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+# Three approved applications: more than a cascade's two, so the recall above
+# stays a plain bottleneck in these tests. tests/test_delos_econ.py covers cascades.
+NDC_THREE_SOURCES = [
+    {
+        "generic_name": "Sodium Acetate",
+        "labeler_name": labeler,
+        "application_number": application,
+        "marketing_category": "ANDA",
+        "finished": True,
+        "listing_expiration_date": "20271231",
+    }
+    for labeler, application in (
+        ("Milla Pharmaceuticals", "ANDA000001"),
+        ("Other Labs", "ANDA000002"),
+        ("Third Co", "ANDA000003"),
+    )
+]
+
+
 def delos_router(
     *,
     recalls: list[dict[str, Any]] | None = None,
@@ -366,6 +386,7 @@ def delos_router(
             ),
             f"{ENFORCEMENT_URL}?search=recall_number": fda_payload([FDA_RECALL]),
             f"{SHORTAGES_URL}?search=generic_name": fda_payload([FDA_SHORTAGE]),
+            NDC_URL: fda_payload(NDC_THREE_SOURCES),
             PORTWATCH_POLL: {"features": transits if transits is not None else []},
             f"{PORTWATCH_URL}?where=portid": {"features": []},
         }
@@ -1126,8 +1147,11 @@ def test_delos_finds_single_source_bottleneck(tmp_path: Path) -> None:
 
 
 def test_delos_two_companies_is_not_single_source(tmp_path: Path) -> None:
+    # Tablets, so the recall cannot start a shortage cascade either.
+    recall = FDA_RECALL | {"product_description": "Sodium Acetate Tablets, 500 mg"}
     router = delos_router(
-        shortages=[FDA_SHORTAGE, FDA_SHORTAGE | {"company_name": "Other Labs"}]
+        recalls=[recall],
+        shortages=[FDA_SHORTAGE, FDA_SHORTAGE | {"company_name": "Other Labs"}],
     )
     assert delos(tmp_path, router).poll_sources() == []
 
@@ -1160,6 +1184,7 @@ def test_delos_bottleneck_scores(
         "kind": "fda_bottleneck",
         "recall": FDA_RECALL | {"classification": classification},
         "shortages": [FDA_SHORTAGE | {"availability": availability}],
+        "company": "Milla Pharmaceuticals",
     }
     adapter = delos(tmp_path, delos_router())
     assert adapter.compute_signal_score(record) == expected
