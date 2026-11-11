@@ -320,6 +320,21 @@ def _register_artifact(conn: Connection, artifact: SourceArtifact) -> None:
             artifact.captured_at,
         ),
     )
+    if artifact.metadata.get("restricted"):
+        # Editor Eyes Only: the public export leaves out this source's URL.
+        conn.execute(
+            """
+            INSERT INTO restricted_sources (source_id, reason)
+            VALUES (%s, %s)
+            ON CONFLICT (source_id) DO NOTHING
+            """,
+            (
+                artifact.source_id,
+                str(
+                    artifact.metadata.get("restricted_reason") or "restricted location"
+                ),
+            ),
+        )
 
 
 def _write_record(

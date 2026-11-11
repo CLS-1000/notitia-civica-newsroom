@@ -200,6 +200,50 @@ def test_archive_links_use_the_public_base(db: Conn) -> None:
     )
 
 
+def restrict(conn: Conn, source_id: str) -> None:
+    conn.execute(
+        "INSERT INTO restricted_sources (source_id, reason) VALUES (%s, %s)",
+        (source_id, "Editor Eyes Only: protected location"),
+    )
+
+
+def test_restricted_source_is_exported_without_its_location(db: Conn) -> None:
+    published(db)
+    restrict(db, "S-1")
+
+    article = export.collect_articles(db, "https://cdn.example.org/warc/")[0][0]
+    hidden, shown = article["sources"]
+    assert hidden["source_id"] == "S-1"
+    assert (hidden["url"], hidden["archive_url"]) == (None, None)
+    assert (hidden["domain"], hidden["tier"]) == ("example.gov", "tier_1_primary")
+    assert hidden["raw_sha256"]
+    assert shown["url"] == "https://example.gov/x" and shown["archive_url"]
+    assert article["evidence_bar"] == 100
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE restricted_sources SET reason = 'lifted'",
+        "DELETE FROM restricted_sources",
+        "TRUNCATE restricted_sources",
+    ],
+)
+def test_a_restriction_cannot_be_lifted(db: Conn, statement: str) -> None:
+    published(db)
+    restrict(db, "S-1")
+    with pytest.raises(errors.RaiseException, match="append-only"):
+        db.execute(statement)
+
+
+def test_a_restriction_needs_a_reason(db: Conn) -> None:
+    published(db)
+    with pytest.raises(errors.CheckViolation):
+        db.execute(
+            "INSERT INTO restricted_sources (source_id, reason) VALUES ('S-1', ' ')"
+        )
+
+
 def test_archive_links_are_absent_without_a_base(db: Conn) -> None:
     published(db)
     assert export.collect_articles(db)[0][0]["sources"][0]["archive_url"] is None
