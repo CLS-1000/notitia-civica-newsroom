@@ -33,9 +33,9 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Final
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollError,
     PollRequest,
     clamp_score,
@@ -246,7 +246,7 @@ def _minutes(value: int | None) -> str:
     return "not posted" if value is None else f"{value} min"
 
 
-class TravelBorderAdapter(LazLongAdapter):
+class TravelBorderAdapter(BaseAdapter):
     adapter_name = "travel_border"
     subject_domain = "border_crossings"
 

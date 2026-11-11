@@ -96,42 +96,42 @@ def _adapter_runner(build: Callable[[Mapping[str, str]], Any]) -> RunnerFactory:
 
 
 def _ubik(env: Mapping[str, str]) -> Any:
-    from spec1_bridge.adapters.ubik_oregon import UbikOregonAdapter
+    from spec1_bridge.adapters.oregon_civic import OregonCivicAdapter
 
-    return UbikOregonAdapter(env["OLIS_SESSION_KEY"])
+    return OregonCivicAdapter(env["OLIS_SESSION_KEY"])
 
 
 def _seldon(_env: Mapping[str, str]) -> Any:
-    from spec1_bridge.adapters.seldon_civic import SeldonCivicAdapter
+    from spec1_bridge.adapters.federal_civic import FederalCivicAdapter
 
-    return SeldonCivicAdapter()
+    return FederalCivicAdapter()
 
 
 def _delos(_env: Mapping[str, str]) -> Any:
-    from spec1_bridge.adapters.delos_econ import DelosEconAdapter
+    from spec1_bridge.adapters.supply_chain import SupplyChainAdapter
 
-    return DelosEconAdapter()
+    return SupplyChainAdapter()
 
 
 def _klein(_env: Mapping[str, str]) -> Any:
-    from spec1_bridge.adapters.klein_biomed import KleinBiomedAdapter
+    from spec1_bridge.adapters.health_biomed import HealthBiomedAdapter
 
-    return KleinBiomedAdapter()
+    return HealthBiomedAdapter()
 
 
 def _mazer(_env: Mapping[str, str]) -> Any:
-    from spec1_bridge.adapters.mazer_defense import MazerDefenseAdapter
+    from spec1_bridge.adapters.defense_contracts import DefenseContractsAdapter
 
-    return MazerDefenseAdapter()
+    return DefenseContractsAdapter()
 
 
 def _ubik_spectral(env: Mapping[str, str]) -> Any:
-    from spec1_bridge.adapters.ubik_spectral import (
-        UbikSpectralAdapter,
+    from spec1_bridge.adapters.living_folklore import (
+        LivingFolkloreAdapter,
         load_reports_jsonl,
     )
 
-    return UbikSpectralAdapter(load_reports_jsonl(Path(env["UBIK_SPECTRAL_REPORTS"])))
+    return LivingFolkloreAdapter(load_reports_jsonl(Path(env["UBIK_SPECTRAL_REPORTS"])))
 
 
 def _travel(_env: Mapping[str, str]) -> Any:

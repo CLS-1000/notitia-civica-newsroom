@@ -25,7 +25,7 @@ from html import unescape
 from html.parser import HTMLParser
 from typing import Final
 
-from spec1_bridge.adapters.base_lazlong import normalize_whitespace
+from spec1_bridge.adapters.base_adapter import normalize_whitespace
 
 SKIPPED_TAGS: Final = frozenset(
     {

@@ -21,8 +21,8 @@ import httpx
 import pytest
 from test_phase1_adapters import Router, counter, options
 
-from spec1_bridge.adapters.base_lazlong import PollRequest
-from spec1_bridge.adapters.klein_biomed import (
+from spec1_bridge.adapters.base_adapter import PollRequest
+from spec1_bridge.adapters.health_biomed import (
     CTGOV_REQUEST,
     CTGOV_SEARCH,
     CTGOV_STUDY,
@@ -37,7 +37,7 @@ from spec1_bridge.adapters.klein_biomed import (
     PRIMARY_TIER,
     PUBMED_REQUEST,
     UNAVAILABLE,
-    KleinBiomedAdapter,
+    HealthBiomedAdapter,
     assess_trial,
     ctgov_url,
     efetch_url,
@@ -331,8 +331,8 @@ def router(
     return Router(routes)
 
 
-def adapter(tmp_path: Path, mock: Router) -> KleinBiomedAdapter:
-    return KleinBiomedAdapter(**options(tmp_path, mock))
+def adapter(tmp_path: Path, mock: Router) -> HealthBiomedAdapter:
+    return HealthBiomedAdapter(**options(tmp_path, mock))
 
 
 def harvest(tmp_path: Path, mock: Router) -> Any:
@@ -1163,7 +1163,7 @@ def test_known_lead_is_skipped_before_any_fetch(tmp_path: Path) -> None:
 # --- Evidence bar on sealed payloads -----------------------------------------------
 
 
-def sealed_trial(tmp_path: Path) -> tuple[KleinBiomedAdapter, Any]:
+def sealed_trial(tmp_path: Path) -> tuple[HealthBiomedAdapter, Any]:
     mock = router()
     klein = adapter(tmp_path, mock)
     [packet] = klein.harvest(counter()).packets

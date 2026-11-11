@@ -14,16 +14,16 @@ import swisseph as swe
 from conftest import Conn
 
 from spec1_bridge.adapters import (
-    deckard_ct_mapper as deckard,
+    aerospace_uap as valis,
 )
 from spec1_bridge.adapters import (
-    eschaton_prophecy as eschaton,
+    ct_subdomain_mapper as deckard,
 )
 from spec1_bridge.adapters import (
     hawkes_narrative_engine as hawkes,
 )
 from spec1_bridge.adapters import (
-    valis_uap as valis,
+    prophecy_calendar as eschaton,
 )
 from spec1_bridge.adapters import (
     void_crossjoin as void,

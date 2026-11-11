@@ -19,14 +19,14 @@ from conftest import Conn
 from test_claim_matcher import FAKE_ARTIFACT
 from test_phase1_adapters import NOW, Router, counter, ollama, options
 
-from spec1_bridge.adapters.ubik_spectral import (
+from spec1_bridge.adapters.living_folklore import (
     ARCHIVE_TIER,
     CHRONAM_SEARCH,
     INFRASOUND_NOTE,
     LORE_SCORE,
     SIGNAL,
+    LivingFolkloreAdapter,
     LoreReport,
-    UbikSpectralAdapter,
     fatal_disaster,
     fulltext_url,
     is_promotional,
@@ -138,8 +138,8 @@ TWO_PAPERS = (
 
 def adapter(
     tmp_path: Path, mock: Router, reports: list[LoreReport] | None = None
-) -> UbikSpectralAdapter:
-    return UbikSpectralAdapter(
+) -> LivingFolkloreAdapter:
+    return LivingFolkloreAdapter(
         reports if reports is not None else [account(1), account(2)],
         **options(tmp_path, mock),
     )

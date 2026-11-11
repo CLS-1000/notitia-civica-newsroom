@@ -31,11 +31,11 @@ from test_phase1_adapters import (
     text_versions,
 )
 
-from spec1_bridge.adapters.seldon_civic import (
+from spec1_bridge.adapters.federal_civic import (
     CRA_MAJOR,
     ECONOMICALLY_SIGNIFICANT,
     FR_API,
-    SeldonCivicAdapter,
+    FederalCivicAdapter,
     bill_label,
     compliance_date,
     major_finding,
@@ -129,8 +129,8 @@ def router(
     return Router(routes)
 
 
-def adapter(tmp_path: Path, mock: Router) -> SeldonCivicAdapter:
-    return SeldonCivicAdapter(API_KEY, **options(tmp_path, mock))
+def adapter(tmp_path: Path, mock: Router) -> FederalCivicAdapter:
+    return FederalCivicAdapter(API_KEY, **options(tmp_path, mock))
 
 
 def harvest(tmp_path: Path, mock: Router) -> Any:

@@ -26,9 +26,9 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, Final
 from urllib.parse import quote
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollError,
     PollRequest,
     clamp_score,
@@ -201,7 +201,7 @@ def transit_divergence(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     }
 
 
-class DelosEconAdapter(LazLongAdapter):
+class SupplyChainAdapter(BaseAdapter):
     adapter_name = "delos_econ"
     subject_domain = "supply_chain"
 

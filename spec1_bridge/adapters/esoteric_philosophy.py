@@ -40,9 +40,9 @@ from datetime import datetime
 from typing import Any, Final
 from urllib.parse import urlencode
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollError,
     PollRequest,
     host_of,
@@ -374,7 +374,7 @@ def review_questions(
 # --- Adapter --------------------------------------------------------------------------
 
 
-class GnosisMysticAdapter(LazLongAdapter):
+class EsotericPhilosophyAdapter(BaseAdapter):
     adapter_name = "gnosis_mystic"
     subject_domain = "esoteric_philosophy"
 

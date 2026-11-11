@@ -60,9 +60,9 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy import ndimage
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollError,
     PollRequest,
     host_of,
@@ -736,7 +736,7 @@ def land_status(rows: list[dict[str, Any]]) -> str:
 # --- Adapter ------------------------------------------------------------------------
 
 
-class TrantorAntiquityAdapter(LazLongAdapter):
+class ArchaeologyLidarAdapter(BaseAdapter):
     adapter_name = "trantor_antiquity"
     subject_domain = "archaeological_antiquity"
 

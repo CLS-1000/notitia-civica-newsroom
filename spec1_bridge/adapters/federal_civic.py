@@ -31,9 +31,9 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, Final
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollError,
     PollRequest,
     clamp_score,
@@ -233,7 +233,7 @@ def _is_enrolled_version(version: dict[str, Any]) -> bool:
     )
 
 
-class SeldonCivicAdapter(LazLongAdapter):
+class FederalCivicAdapter(BaseAdapter):
     adapter_name = "seldon_civic"
     subject_domain = "federal_legislation"
 

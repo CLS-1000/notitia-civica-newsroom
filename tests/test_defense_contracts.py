@@ -20,8 +20,8 @@ import httpx
 import pytest
 from test_phase1_adapters import Router, counter, minimal_pdf, options, spool_rows
 
-from spec1_bridge.adapters.base_lazlong import PollError, PollRequest
-from spec1_bridge.adapters.mazer_defense import (
+from spec1_bridge.adapters.base_adapter import PollError, PollRequest
+from spec1_bridge.adapters.defense_contracts import (
     KIND_AWARD,
     KIND_DODIG,
     KIND_GAO,
@@ -30,9 +30,9 @@ from spec1_bridge.adapters.mazer_defense import (
     SOLE_SOURCE_THRESHOLD,
     USASPENDING_AWARD,
     USASPENDING_SEARCH,
+    DefenseContractsAdapter,
     Docket,
     DocketRejected,
-    MazerDefenseAdapter,
     award_facts,
     award_url,
     format_amount,
@@ -210,9 +210,9 @@ def router(
 
 def adapter(
     tmp_path: Path, mock: Router, dockets: list[dict[str, Any]] | None = None
-) -> MazerDefenseAdapter:
+) -> DefenseContractsAdapter:
     parsed = [Docket.from_dict(row) for row in dockets or []]
-    return MazerDefenseAdapter(parsed, **options(tmp_path, mock))
+    return DefenseContractsAdapter(parsed, **options(tmp_path, mock))
 
 
 def harvest(

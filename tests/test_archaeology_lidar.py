@@ -19,7 +19,7 @@ from conftest import Conn
 from numpy.typing import NDArray
 from test_phase1_adapters import NOW, Router, counter, ollama, options
 
-from spec1_bridge.adapters.trantor_antiquity import (
+from spec1_bridge.adapters.archaeology_lidar import (
     BLM_SMA,
     ELEVATION_SERVICE,
     GRID_CELLS,
@@ -29,9 +29,9 @@ from spec1_bridge.adapters.trantor_antiquity import (
     MRDS_RECORD,
     MRDS_WFS,
     OPEN_CONTEXT,
+    ArchaeologyLidarAdapter,
     MineralDetail,
     SurveyArea,
-    TrantorAntiquityAdapter,
     detect_features,
     finest_lidar,
     land_status,
@@ -248,7 +248,7 @@ def router(
 
 
 def harvest(tmp_path: Path, mock: Router, areas: list[SurveyArea] | None = None) -> Any:
-    adapter = TrantorAntiquityAdapter(areas or [AREA], **options(tmp_path, mock))
+    adapter = ArchaeologyLidarAdapter(areas or [AREA], **options(tmp_path, mock))
     return adapter.harvest(counter())
 
 
@@ -603,7 +603,7 @@ def test_mining_lead_reaches_the_ledger(
     tmp_path: Path, db: Conn, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    adapter = TrantorAntiquityAdapter(
+    adapter = ArchaeologyLidarAdapter(
         [AREA], **options(tmp_path, router(with_ditch(hillside())))
     )
     report = run_adapter(adapter, db, ollama()[0])
@@ -622,7 +622,7 @@ def test_mining_lead_reaches_the_ledger(
     ).fetchone()
     assert restricted == (3,)
 
-    again = TrantorAntiquityAdapter(
+    again = ArchaeologyLidarAdapter(
         [AREA], **options(tmp_path, router(with_ditch(hillside())))
     )
     repeat = run_adapter(again, db, ollama()[0])

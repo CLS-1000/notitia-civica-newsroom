@@ -23,7 +23,7 @@ import psycopg
 import pytest
 
 from spec1_bridge import mycroft_triage
-from spec1_bridge.adapters.base_lazlong import excerpt_is_verbatim, read_artifact_text
+from spec1_bridge.adapters.base_adapter import excerpt_is_verbatim, read_artifact_text
 from spec1_bridge.mycroft_triage import Enrichment, OllamaEnricher, triage_packets
 from spec1_bridge.proc_track_importer import (
     ADAPTER_NAME,

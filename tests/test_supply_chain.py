@@ -22,12 +22,12 @@ from test_phase1_adapters import (
     options,
 )
 
-from spec1_bridge.adapters.delos_econ import (
+from spec1_bridge.adapters.supply_chain import (
     ENFORCEMENT_URL,
     NDC_URL,
     PORTWATCH_URL,
     SHORTAGES_URL,
-    DelosEconAdapter,
+    SupplyChainAdapter,
     approved_sources,
     recall_generics,
     recall_scope,
@@ -100,8 +100,8 @@ def router(
     )
 
 
-def adapter(tmp_path: Path, mock: Router) -> DelosEconAdapter:
-    return DelosEconAdapter(**options(tmp_path, mock))
+def adapter(tmp_path: Path, mock: Router) -> SupplyChainAdapter:
+    return SupplyChainAdapter(**options(tmp_path, mock))
 
 
 def harvest(tmp_path: Path, mock: Router) -> Any:
