@@ -318,6 +318,14 @@ class LazLongAdapter(ABC):
         """Return credentials for this source. They are never spooled."""
         return {}
 
+    def replays(self, request: PollRequest) -> bool:
+        """Say whether a spooled request can be replayed now. Others stay spooled."""
+        return True
+
+    def receipt_details(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Return detector findings to keep in the lead's decomposition receipt."""
+        return {}
+
     def headers_for(self, url: str) -> dict[str, str]:
         """Return the credentials to send with a request to url.
 
@@ -452,7 +460,12 @@ class LazLongAdapter(ABC):
     def poll_sources(self) -> list[dict[str, Any]]:
         """Replay spooled requests, run this poll, and return its raw records."""
         requests: dict[tuple[str, str, str], PollRequest] = {}
-        for request in (*self._spool.pending(self.adapter_name), *self.poll_requests()):
+        spooled = [
+            request
+            for request in self._spool.pending(self.adapter_name)
+            if self.replays(request)
+        ]
+        for request in (*spooled, *self.poll_requests()):
             requests[request.identity] = request
 
         items: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -545,6 +558,7 @@ class LazLongAdapter(ABC):
                 paste_ready_prompt=self.build_paste_ready_prompt(raw_record, artifacts),
                 public_question=question,
                 public_interest_reason=reason,
+                receipt_details=self.receipt_details(raw_record),
             ),
             "",
         )

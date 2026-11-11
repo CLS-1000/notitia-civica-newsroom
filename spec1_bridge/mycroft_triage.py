@@ -292,6 +292,8 @@ def _write_record(
         ],
         "enrichment": asdict(enrichment),
     }
+    if packet.receipt_details:
+        receipt["detector"] = packet.receipt_details
     with conn.transaction():
         for artifact in packet.source_artifacts:
             _register_artifact(conn, artifact)
@@ -509,8 +511,9 @@ def main(argv: list[str] | None = None) -> int:
         adapters.append(DelosEconAdapter())
         if args.session_key:
             adapters.append(UbikOregonAdapter(args.session_key))
-        if os.environ.get("CONGRESS_API_KEY"):
-            adapters.append(SeldonCivicAdapter())
+        # Seldon polls Federal Register rules without a key, and adds
+        # Congress.gov bills when CONGRESS_API_KEY is set.
+        adapters.append(SeldonCivicAdapter())
 
     enricher = OllamaEnricher(model=args.ollama_model)
     with psycopg.connect(args.dsn, autocommit=True) as conn:
