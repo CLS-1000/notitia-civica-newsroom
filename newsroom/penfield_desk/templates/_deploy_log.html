@@ -1,0 +1,19 @@
+<div id="deploy-log" class="deploy-log"{% if run and run.running %} hx-get="/publish/deploy/log" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  {% if busy %}<p class="warn">A deploy is already running.</p>{% endif %}
+  {% if run %}
+  <p class="muted">Started {{ run.started_at }}{% if run.finished_at %} · finished {{ run.finished_at }}{% endif %}</p>
+  {% for step in run.steps %}
+  <details class="step {{ step.state }}"{% if step.state in ("running", "failed") %} open{% endif %}>
+    <summary><span class="state {{ step.state }}">{{ step.state | upper }}</span> {{ loop.index }}. {{ step.name }}</summary>
+    {% if step.lines %}<pre class="bytes">{{ step.lines | join("\n") }}</pre>{% endif %}
+  </details>
+  {% endfor %}
+  {% if run.succeeded %}
+  <p class="seal-ok" role="status">✓ Deployed{% if run.commit %} as {{ run.commit }}{% endif %}. Live at <a href="{{ config.public_url }}" target="_blank" rel="noopener">{{ config.public_url }}</a> (GitHub Pages takes about a minute to refresh).</p>
+  {% elif not run.running %}
+  <p class="err" role="alert">Deploy stopped. The public site was not changed past the last completed step.</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">No deploy has run since the desk started.</p>
+  {% endif %}
+</div>

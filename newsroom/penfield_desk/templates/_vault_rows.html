@@ -1,0 +1,26 @@
+<div id="vault-results">
+  <p class="muted count">{{ total }} sealed source{{ '' if total == 1 else 's' }} · page {{ page }} of {{ pages }}</p>
+  <table class="dense">
+    <thead><tr><th>Source</th><th>Domain</th><th>Tier</th><th>Retrieved (UTC)</th><th>SHA-256</th><th>Review</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+    <tr class="vault-row{% if row.tier_review_flagged %} flagged{% endif %}" hx-get="/vault/{{ row.source_id }}/raw" hx-target="#raw-body" tabindex="0" data-source="{{ row.source_id }}">
+      <td><code>{{ row.source_id }}</code>{% if row.restricted_reason %} <span class="badge eyes" title="{{ row.restricted_reason }}">EDITOR EYES ONLY</span>{% endif %}</td>
+      <td>{{ row.domain }}</td>
+      <td><span class="tier {{ row.tier }}">{{ tier_label(row.tier) }}</span></td>
+      <td class="muted">{{ row.retrieved_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td class="hash"><code>{{ row.raw_sha256 }}</code></td>
+      <td>{% if row.tier_review_flagged %}<span class="flag">⚑ {{ row.tier_review_reason }}</span>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">No sealed sources match.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if pages > 1 %}
+  <nav class="pager" aria-label="Pages">
+    {% if page > 1 %}<a href="/vault?q={{ q | urlencode }}{% if flagged %}&flagged=on{% endif %}&page={{ page - 1 }}" hx-get="/vault?q={{ q | urlencode }}{% if flagged %}&flagged=on{% endif %}&page={{ page - 1 }}" hx-target="#vault-results" hx-swap="outerHTML">← Newer</a>{% endif %}
+    {% if page < pages %}<a href="/vault?q={{ q | urlencode }}{% if flagged %}&flagged=on{% endif %}&page={{ page + 1 }}" hx-get="/vault?q={{ q | urlencode }}{% if flagged %}&flagged=on{% endif %}&page={{ page + 1 }}" hx-target="#vault-results" hx-swap="outerHTML">Older →</a>{% endif %}
+  </nav>
+  {% endif %}
+</div>

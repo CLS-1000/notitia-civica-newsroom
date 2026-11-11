@@ -1,0 +1,10 @@
+{% set tabs = [("fleet", "/fleet", "Fleet Control"), ("triage", "/triage", "Triage Queue"), ("desk", "/", "Editorial Desk"), ("vault", "/vault", "Evidence Vault"), ("publish", "/publish", "Publish & Deploy")] %}
+<header class="appbar">
+  <a class="brand" href="/">Notitia Civica <span>Master Control</span></a>
+  <nav aria-label="Cockpit">
+    {% for key, href, label in tabs %}
+    <a href="{{ href }}" class="tab{% if tab == key %} on{% endif %}"{% if tab == key %} aria-current="page"{% endif %}>[{{ label | upper }}]</a>
+    {% endfor %}
+  </nav>
+  {% include "_status.html" %}
+</header>

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Fleet Control · Penfield Desk{% endblock %}
+{% block main %}
+<main class="tabpage">
+  <div class="tabhead">
+    <h1>Fleet Control</h1>
+    <p class="muted">Subject engines, anomaly detectors, and sibling importers. A run polls its sources, seals evidence, and triages leads into the queue. Cards refresh while a run is active.</p>
+  </div>
+  {% for group, title in [("engine", "Subject &amp; Anomaly Engines"), ("importer", "Sibling Importers"), ("adapter", "Standalone Adapters")] %}
+  <h2 class="section-title">{{ title | safe }}</h2>
+  <div class="cards">
+    {% for c in cards if c.engine.group == group %}{% include "_engine_card.html" %}{% endfor %}
+  </div>
+  {% endfor %}
+</main>
+{% endblock %}

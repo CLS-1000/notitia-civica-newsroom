@@ -12,7 +12,7 @@ html, body {
 .desk {
   display: grid;
   grid-template-columns: 32% 40% 28%;
-  height: 100vh;
+  height: calc(100vh - var(--pf-bar-h));
 }
 
 .pane {

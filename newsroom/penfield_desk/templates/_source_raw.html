@@ -1,0 +1,26 @@
+<div class="raw" data-source="{{ source.source_id }}">
+  <header>
+    <h2>{{ source.source_id }} · {{ tier_label(source.tier) }} · {{ source.domain }}</h2>
+    <button type="button" class="secondary" data-close-modal>Close</button>
+  </header>
+  {% if source.restricted_reason %}<p class="badge eyes">EDITOR EYES ONLY: {{ source.restricted_reason }}. The public export omits this source's URL and archive link.</p>{% endif %}
+  {% if source.tier_review_flagged %}<p class="flag">⚑ Flagged for tier review: {{ source.tier_review_reason }}</p>{% endif %}
+  <dl class="stats">
+    <dt>URL</dt><dd>{{ source.url or "— (harvest recorded the domain only)" }}</dd>
+    <dt>Retrieved</dt><dd>{{ source.retrieved_at.isoformat() }}</dd>
+    <dt>Sealed SHA-256</dt><dd><code>{{ source.raw_sha256 }}</code></dd>
+    <dt>Blob</dt><dd><code>{{ source.archive_path }}</code></dd>
+  </dl>
+  {% if not raw.found %}
+  <p class="err">Blob not found on disk at {{ raw.path }}.</p>
+  {% else %}
+  <p class="{{ 'seal-ok' if raw.seal_ok else 'err' }}">{% if raw.seal_ok %}✓ Seal verified: the bytes on disk hash to the ledger's SHA-256 ({{ raw.size }} bytes).{% else %}✕ SEAL MISMATCH: bytes on disk hash to {{ raw.sha256 }}.{% endif %}</p>
+  {% if raw.text is not none %}
+  <pre class="bytes">{{ raw.text }}</pre>
+  {% else %}
+  <p class="muted">Binary payload; first {{ raw.hex_lines | length * 16 }} bytes as hex.</p>
+  <pre class="bytes">{{ raw.hex_lines | join("\n") }}</pre>
+  {% endif %}
+  {% if raw.truncated %}<p class="muted">Preview truncated; the full blob is {{ raw.size }} bytes.</p>{% endif %}
+  {% endif %}
+</div>

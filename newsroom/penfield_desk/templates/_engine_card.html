@@ -1,0 +1,24 @@
+{% set e = c.engine %}
+<article class="card status-{{ c.status | lower }}" id="engine-{{ e.key }}" data-engine="{{ e.key }}"
+  {% if c.status == "ACTIVE" %}hx-get="/fleet/{{ e.key }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <header>
+    <span class="name">{% if e.number %}<span class="num">E{{ e.number }}</span>{% endif %}{{ e.label }}</span>
+    <span class="state {{ c.status | lower }}">{{ c.status }}</span>
+  </header>
+  <div class="badges"><span class="badge fam-{{ e.family | lower }}">{{ e.family }}</span><code>{{ e.key }}</code></div>
+  <dl class="stats">
+    <dt>Last poll</dt><dd>{{ c.last_poll or "—" }}</dd>
+    <dt>Leads produced</dt><dd>{{ c.leads }}{% if e.ledger == "telemetry" %} <span class="muted">observations</span>{% endif %}</dd>
+    <dt>Triage pass rate</dt><dd>{{ c.pass_rate or "—" }}{% if c.run and c.run.status == "ok" %} <span class="muted">({{ c.run.written }}/{{ c.run.written + c.run.rejected }} last run)</span>{% endif %}</dd>
+    <dt>Newest lead</dt><dd>{{ c.latest_lead or "—" }}</dd>
+  </dl>
+  {% if c.status == "ERROR" and c.run %}<p class="err">{{ c.run.errors | join("; ") }}</p>{% endif %}
+  {% if c.run and c.run.status == "ok" and c.run.errors %}<p class="warn">{{ c.run.errors | length }} source error{{ '' if c.run.errors|length == 1 else 's' }}: {{ c.run.errors[0] }}</p>{% endif %}
+  {% if c.notice %}<p class="warn">{{ c.notice }}</p>{% endif %}
+  {% if c.blocker %}
+  <p class="muted blocker">{{ c.blocker }}</p>
+  <button class="secondary" type="button" disabled>Run Harvest Now</button>
+  {% else %}
+  <button class="run" type="button" hx-post="/fleet/{{ e.key }}/run" hx-target="#engine-{{ e.key }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.status == "ACTIVE" %} disabled{% endif %}>{% if c.status == "ACTIVE" %}Harvesting…{% else %}Run Harvest Now{% endif %}</button>
+  {% endif %}
+</article>
