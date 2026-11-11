@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sys
 import uuid
 from collections.abc import Callable, Sequence
@@ -29,6 +30,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
+from urllib.parse import unquote
 
 import httpx
 import psycopg
@@ -216,17 +218,34 @@ def _excerpt_problem(packet: Spec1LeadPacket) -> str | None:
     return None
 
 
+# Archives that serve many publishers. Chronicling America pages name their
+# newspaper's LCCN in the path, and each newspaper is its own publisher.
+_NEWSPAPER_ARCHIVES: Final = frozenset(
+    {"loc.gov", "tile.loc.gov", "chroniclingamerica.loc.gov"}
+)
+_LCCN_IN_PATH: Final = re.compile(
+    r"/(?:data|resource|lccn)/(sn\d+|[a-z]{1,3}\d{8,10})/", re.IGNORECASE
+)
+
+
 def _publisher_domain(url: str) -> str | None:
+    """The publisher behind url: its domain, or the newspaper within an archive."""
     try:
-        return extract_domain(url)
+        domain = extract_domain(url)
     except ValueError:
         return None
+    if domain in _NEWSPAPER_ARCHIVES:
+        match = _LCCN_IN_PATH.search(unquote(url))
+        if match:
+            return f"loc.gov/{match.group(1).lower()}"
+    return domain
 
 
 def independent_publishers(artifacts: Sequence[SourceArtifact]) -> set[str]:
     """The distinct publisher domains among artifacts.
 
-    Two pages from one outlet are one source, however many URLs they have. An
+    Two pages from one outlet are one source, however many URLs they have. A
+    newspaper archive is not one outlet: two newspapers it holds are two. An
     artifact without an http(s) URL names no publisher and counts for none.
     """
     return {
