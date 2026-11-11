@@ -26,8 +26,15 @@ Sources:
   only a claim until sealed: the evidence bar re-reads the sealed decision and
   requires its docket number, the sustain wording (for GAO), the awardee as
   named, and the finding, verbatim. Dockets from any other host (defense
-  blogs, forums, leak sites) are rejected when loaded. If an official source
-  refuses the fetch, the lead is an error for retry, never a lead without it.
+  blogs, forums, leak sites) are rejected when loaded.
+
+Degrading on refusal: when gao.gov or dodig.mil refuses a docket with HTTP 403,
+the docket is set aside, not sealed, and never cited. A major sole-source award
+is still a lead on its sealed USAspending record alone, and its receipt notes
+"GAO docket unsealed (HTTP 403); lead based on verified USAspending contract
+award." An award that qualifies only through that docket (a protest on a
+competed award) is an error for retry. Any other failure, and any sealed docket
+that does not say what it claims, still fails the lead.
 
 Fail closed: a record whose award is not DoD, or which is neither a major
 sole-source award nor linked to a sustained protest, is not a lead. The public
@@ -45,7 +52,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -69,7 +76,7 @@ from spec1_bridge.adapters.base_lazlong import (
     read_artifact_text,
     render_prompt,
 )
-from spec1_bridge.contracts import SourceArtifact
+from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +114,9 @@ LARGE_AWARD_POINTS: Final = 10.0
 PROTEST_SCORE: Final = 65.0
 SUSTAINED_PROTEST_POINTS: Final = 25.0
 AUDIT_POINTS: Final = 5.0
+
+REFUSED_STATUS: Final = 403
+_DOCKET_SOURCE: Final = {KIND_GAO: "GAO", KIND_DODIG: "DoD IG"}
 
 _GAO_DOCKET: Final = re.compile(r"^B-\d{6}(?:\.\d+)*$")
 _DODIG_DOCKET: Final = re.compile(r"^DODIG-\d{4}-\d{3}$")
@@ -374,6 +384,16 @@ def sealed_docket_holds(artifact: SourceArtifact) -> bool:
     return True
 
 
+def unsealed_notes(unsealed: Sequence[Docket]) -> list[str]:
+    """One receipt note per kind of docket that was refused."""
+    kinds = dict.fromkeys(item.kind for item in unsealed)
+    return [
+        f"{_DOCKET_SOURCE[kind]} docket unsealed (HTTP {REFUSED_STATUS}); lead based "
+        "on verified USAspending contract award."
+        for kind in kinds
+    ]
+
+
 # --- Adapter ------------------------------------------------------------------
 
 
@@ -614,6 +634,81 @@ class MazerDefenseAdapter(LazLongAdapter):
         )
         return targets
 
+    def _build_packet(
+        self,
+        raw_record: dict[str, Any],
+        score: float,
+        allocate_source_id: Callable[[], str],
+    ) -> tuple[Spec1LeadPacket | None, str]:
+        """Seal as the base does, except that a docket refused with HTTP 403 is
+        set aside rather than failing the lead.
+
+        The award is always sealed first and must succeed. A refused docket is
+        left out of the record, so the lead, its key, its score, and its public
+        text stand on the sealed records alone, and the receipt says which
+        docket went unsealed. If the award does not qualify without that docket
+        (a protest on a competed award), the refusal is raised for retry. Any
+        other failure, and any sealed docket that does not hold, still fails.
+        """
+        artifacts: list[SourceArtifact] = []
+        excerpts: dict[str, str] = {}
+        refused: dict[str, httpx.HTTPStatusError] = {}
+        for target in self.evidence_targets(raw_record):
+            try:
+                artifact = self._seal(target, allocate_source_id)
+            except httpx.HTTPStatusError as error:
+                if (
+                    target.kind == KIND_AWARD
+                    or error.response.status_code != REFUSED_STATUS
+                ):
+                    raise
+                refused[str(target.metadata["docket"])] = error
+                logger.warning(
+                    "%s: %s refused (HTTP %s); sealing without it",
+                    self.adapter_name,
+                    target.metadata["docket"],
+                    REFUSED_STATUS,
+                )
+                continue
+            artifacts.append(artifact)
+            if target.excerpt:
+                excerpts[artifact.source_id] = target.excerpt
+
+        record = raw_record
+        if refused:
+            record = {
+                **raw_record,
+                "dockets": [
+                    item for item in raw_record["dockets"] if item.number not in refused
+                ],
+                "unsealed": [
+                    item for item in raw_record["dockets"] if item.number in refused
+                ],
+            }
+            score = self.compute_signal_score(record)
+            if score < self.min_signal_score:
+                raise next(iter(refused.values()))
+
+        if not self.verify_evidence_bar(artifacts):
+            return None, self.record_key(record)
+        question, reason = self.public_interest_for(record)
+        return (
+            Spec1LeadPacket(
+                lead_id=self.lead_id_for(record),
+                timestamp=self.record_timestamp(record),
+                adapter_name=self.adapter_name,
+                anomaly_score=clamp_score(score),
+                evidence_bar_passed=True,
+                source_artifacts=artifacts,
+                verbatim_excerpts=excerpts,
+                paste_ready_prompt=self.build_paste_ready_prompt(record, artifacts),
+                public_question=question,
+                public_interest_reason=reason,
+                receipt_details=self.receipt_details(record),
+            ),
+            "",
+        )
+
     def verify_evidence_bar(self, artifacts: list[SourceArtifact]) -> bool:
         """Official records only, each re-read and holding what it claims.
 
@@ -707,6 +802,15 @@ class MazerDefenseAdapter(LazLongAdapter):
                 }
                 for item in record["dockets"]
             ],
+            "unsealed_dockets": [
+                {
+                    "docket": item.number,
+                    "kind": item.kind,
+                    "http_status": REFUSED_STATUS,
+                }
+                for item in record.get("unsealed", [])
+            ],
+            "evidence_notes": unsealed_notes(record.get("unsealed", [])),
             "not_checked": (
                 "cost-plus ceiling growth: no keyless source reports "
                 "per-modification ceilings"
@@ -734,6 +838,10 @@ class MazerDefenseAdapter(LazLongAdapter):
                     if item.sustained
                 )
                 or "none linked",
+                "Unsealed dockets (refused, not evidence)": "; ".join(
+                    item.number for item in record.get("unsealed", [])
+                )
+                or "none",
                 "DoD IG reports": "; ".join(
                     f"{item.number} ({item.issued})"
                     for item in dockets

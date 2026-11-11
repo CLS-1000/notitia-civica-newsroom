@@ -667,11 +667,115 @@ def test_protest_whose_sealed_decision_does_not_hold_is_rejected(
     assert result.evidence_rejections == [f"usaspending:{AWARD}:B-423456.2"]
 
 
-def test_gao_refusing_the_fetch_is_an_error_not_a_lead(tmp_path: Path) -> None:
+GAO_NOTE = (
+    "GAO docket unsealed (HTTP 403); lead based on verified USAspending contract award."
+)
+IG_NOTE = (
+    "DoD IG docket unsealed (HTTP 403); lead based on verified USAspending "
+    "contract award."
+)
+
+
+def test_gao_refusal_degrades_to_the_sole_source_lead(tmp_path: Path) -> None:
     result = harvest(tmp_path, router(gao=httpx.Response(403)), [gao_docket()])
+    assert result.errors == [] and result.evidence_rejections == []
+    [packet] = result.packets
+    [artifact] = packet.source_artifacts
+    assert artifact.metadata["kind"] == KIND_AWARD
+    assert artifact.tier == "tier_1_primary"
+    assert packet.anomaly_score == 60.0
+    assert packet.timestamp == datetime(2026, 10, 2, tzinfo=UTC)
+    assert packet.public_interest_reason == (
+        "USAspending dockets confirm a $412.5 million sole-source obligation; "
+        "no sustained GAO bid protest has been linked to it."
+    )
+    text = f"{packet.public_question} {packet.public_interest_reason}"
+    assert "B-423456" not in text and FINDING not in text
+    receipt = packet.receipt_details
+    assert receipt["evidence_notes"] == [GAO_NOTE]
+    assert receipt["unsealed_dockets"] == [
+        {"docket": "B-423456.2", "kind": KIND_GAO, "http_status": 403}
+    ]
+    assert receipt["dockets"] == []
+    assert "B-423456.2" in packet.paste_ready_prompt  # listed as unsealed
+    assert "refused, not evidence" in packet.paste_ready_prompt
+    assert len(sealed_files(tmp_path)) == 1
+
+
+def test_degraded_lead_has_the_award_only_key(tmp_path: Path) -> None:
+    """Once GAO can be sealed, the protest lead is new, not a repeat."""
+    degraded = harvest(tmp_path / "a", router(gao=httpx.Response(403)), [gao_docket()])
+    plain = harvest(tmp_path / "b", router())
+    full = harvest(tmp_path / "c", router(), [gao_docket()])
+    assert degraded.packets[0].lead_id == plain.packets[0].lead_id
+    assert full.packets[0].lead_id != plain.packets[0].lead_id
+
+
+def test_dodig_refusal_is_noted_the_same_way(tmp_path: Path) -> None:
+    [packet] = harvest(tmp_path, router(ig=httpx.Response(403)), [ig_docket()]).packets
+    assert packet.receipt_details["evidence_notes"] == [IG_NOTE]
+    assert packet.anomaly_score == 60.0
+
+
+def test_refused_gao_with_sealed_dodig_keeps_the_audit(tmp_path: Path) -> None:
+    mock = router(gao=httpx.Response(403))
+    [packet] = harvest(tmp_path, mock, [gao_docket(), ig_docket()]).packets
+    kinds = {item.metadata["kind"] for item in packet.source_artifacts}
+    assert kinds == {KIND_AWARD, KIND_DODIG}
+    assert packet.anomaly_score == 65.0
+    assert packet.receipt_details["evidence_notes"] == [GAO_NOTE]
+
+
+def test_refused_protest_on_a_competed_award_is_an_error_for_retry(
+    tmp_path: Path,
+) -> None:
+    """Without the protest there is nothing verified to report."""
+    mock = router(
+        hits=(),
+        gao=httpx.Response(403),
+        awards={AWARD: award_detail(extent="A", amount=8_200_000.0)},
+    )
+    result = harvest(tmp_path, mock, [gao_docket()])
     assert result.packets == []
     assert len(result.errors) == 1
     assert result.errors[0].startswith(f"usaspending:{AWARD}:B-423456.2:")
+    assert "403" in result.errors[0]
+
+
+@pytest.mark.parametrize("status", [404, 500, 503])
+def test_other_docket_failures_still_fail_the_lead(tmp_path: Path, status: int) -> None:
+    result = harvest(tmp_path, router(gao=httpx.Response(status)), [gao_docket()])
+    assert result.packets == []
+    assert len(result.errors) == 1
+
+
+def test_refused_award_record_is_never_degraded(tmp_path: Path) -> None:
+    """The award is read, then refused when sealed: no lead, an error to retry."""
+    calls: list[str] = []
+
+    def read_then_refuse(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        if len(calls) == 1:
+            return httpx.Response(200, json=award_detail())
+        return httpx.Response(403)
+
+    mock = router()
+    mock.routes[award_url(AWARD)] = read_then_refuse
+    result = harvest(tmp_path, mock, [gao_docket()])
+    assert len(calls) == 2  # enrich read, then the refused seal
+    assert result.packets == []
+    assert len(result.errors) == 1 and "403" in result.errors[0]
+    assert sealed_files(tmp_path) == []
+
+
+def test_sealed_award_whose_bar_fails_is_still_rejected_after_a_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    klein = adapter(tmp_path, router(gao=httpx.Response(403)), [gao_docket()])
+    monkeypatch.setattr(klein, "verify_evidence_bar", lambda _artifacts: False)
+    result = klein.harvest(counter())
+    assert result.packets == []
+    assert result.evidence_rejections == [f"usaspending:{AWARD}"]
 
 
 def test_dodig_report_corroborates_from_its_pdf(tmp_path: Path) -> None:
