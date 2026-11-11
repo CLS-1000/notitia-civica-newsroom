@@ -492,9 +492,9 @@ def test_independent_publishers_counts_domains_not_urls() -> None:
         return replace(FAKE_ARTIFACT, origin_url=url)
 
     same_outlet = [at(POLITIFACT_URL), at(f"{POLITIFACT_URL}follow-up/")]
-    assert independent_publishers(same_outlet) == {"www.politifact.com"}
+    assert independent_publishers(same_outlet) == {"politifact.com"}
     assert independent_publishers([at(POLITIFACT_URL), at(AP_URL)]) == {
-        "www.politifact.com",
+        "politifact.com",
         "apnews.com",
     }
     assert independent_publishers([at("not a url"), at("ftp://x.org/a")]) == set()
@@ -509,6 +509,21 @@ def test_two_urls_from_one_outlet_are_rejected_by_triage(
         sealed, source_id="S-900", origin_url=f"{POLITIFACT_URL}follow-up/"
     )
     packet.source_artifacts = [sealed, second]
+    report = triage_packets([packet], "narrative_integrity", db, ollama()[0], NOW)
+    assert report.written == []
+    assert [item.gate for item in report.rejected] == ["corroboration"]
+
+
+def test_www_and_bare_host_of_one_outlet_are_rejected_by_triage(
+    tmp_path: Path, db: Conn
+) -> None:
+    [packet] = harvest(tmp_path, claim_payload(politifact())).packets
+    [sealed] = packet.source_artifacts
+    bare = POLITIFACT_URL.replace("www.", "", 1)
+    packet.source_artifacts = [
+        sealed,
+        replace(sealed, source_id="S-902", origin_url=bare),
+    ]
     report = triage_packets([packet], "narrative_integrity", db, ollama()[0], NOW)
     assert report.written == []
     assert [item.gate for item in report.rejected] == ["corroboration"]

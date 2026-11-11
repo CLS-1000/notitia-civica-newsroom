@@ -19,7 +19,11 @@ import pytest
 from conftest import Conn
 from psycopg import errors, sql
 
-from newsroom.harlan_eternity.custody import USER_AGENT, fetch_and_seal_source
+from newsroom.harlan_eternity.custody import (
+    USER_AGENT,
+    extract_domain,
+    fetch_and_seal_source,
+)
 from spec1_bridge.moby_runner import main, run_manifest
 
 PROOF_HASH = "a" * 64
@@ -425,7 +429,7 @@ def test_seal_returns_complete_receipt(tmp_path: Path) -> None:
     custody = seal(tmp_path, b"payload")
     assert custody["source_id"] == "S-1042"
     assert custody["tier"] == "tier_1_primary"
-    assert custody["domain"] == "www.example.gov"
+    assert custody["domain"] == "example.gov"
     assert custody["verbatim_text"] == "payload"
     assert custody["byte_length"] == 7
     assert custody["http_status"] == 200
@@ -551,7 +555,7 @@ def test_runner_registers_verified_records(db: Conn, tmp_path: Path) -> None:
     ).fetchone()
     assert row == (
         first["url"],
-        "www.example.gov",
+        "example.gov",
         "tier_1_primary",
         hashlib.sha256(b"first payload").hexdigest(),
         first["archive_path"],
@@ -745,6 +749,58 @@ def test_moby_same_bytes_on_two_domains_are_two_sources(
     report = run_manifest(harvest(tmp_path, *lines), db, tmp_path)
 
     assert len(set(report.registered)) == 2
+
+
+def test_moby_www_and_bare_domain_are_one_source(db: Conn, tmp_path: Path) -> None:
+    lines = [
+        moby_line(tmp_path, b"page", domain="www.agency.example.gov"),
+        moby_line(tmp_path, b"page", domain="AGENCY.example.gov"),
+    ]
+
+    report = run_manifest(harvest(tmp_path, *lines), db, tmp_path)
+
+    assert len(set(report.registered)) == 1
+    row = db.execute("SELECT domain FROM source_registry").fetchone()
+    assert row == ("agency.example.gov",)
+
+
+def test_moby_still_matches_a_source_sealed_with_www(db: Conn, tmp_path: Path) -> None:
+    line = moby_line(tmp_path, b"legacy page")
+    db.execute(
+        """
+        INSERT INTO source_registry
+            (source_id, url, domain, tier, raw_sha256, archive_path, retrieved_at)
+        VALUES ('S-77', NULL, 'www.agency.example.gov', 'tier_4_unverified', %s,
+                %s, now())
+        """,
+        (line["sha256"], line["file"]),
+    )
+
+    report = run_manifest(harvest(tmp_path, line), db, tmp_path)
+
+    assert report.registered == [] and report.already_registered == ["S-77"]
+
+
+@pytest.mark.parametrize(
+    ("url", "domain"),
+    [
+        ("https://www.politifact.com/factchecks/x", "politifact.com"),
+        ("https://politifact.com/factchecks/x", "politifact.com"),
+        ("https://WWW.PolitiFact.COM/", "politifact.com"),
+        ("http://www.example.gov:8080/a", "example.gov"),
+        ("https://factcheck.afp.com/x", "factcheck.afp.com"),
+        ("https://wwwhost.example.org/", "wwwhost.example.org"),
+        ("https://www.www.example.org/", "www.example.org"),
+    ],
+)
+def test_extract_domain_strips_www_and_casefolds(url: str, domain: str) -> None:
+    assert extract_domain(url) == domain
+
+
+@pytest.mark.parametrize("url", ["ftp://example.org/", "not a url", "https://www./"])
+def test_extract_domain_rejects_urls_without_a_host(url: str) -> None:
+    with pytest.raises(ValueError):
+        extract_domain(url)
 
 
 def test_moby_tampered_blob_is_rejected(db: Conn, tmp_path: Path) -> None:

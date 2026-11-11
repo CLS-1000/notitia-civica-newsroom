@@ -41,6 +41,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
 
+from newsroom.harlan_eternity.custody import normalize_domain
 from spec1_bridge.adapters.base_lazlong import (
     EvidenceTarget,
     LazLongAdapter,
@@ -116,7 +117,7 @@ class FactCheckReview:
     def publisher(self) -> str:
         """Who reviewed it, for independence: the site, else the page's host."""
         site = self.publisher_site or host_of(self.url)
-        return site.lower().removeprefix("www.")
+        return normalize_domain(site)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -720,6 +721,6 @@ class ClaimMatcherAdapter(LazLongAdapter):
 
 
 def _on_site(url: str, site: str) -> bool:
-    host = host_of(url).lower().removeprefix("www.")
-    wanted = site.lower().removeprefix("www.")
+    host = normalize_domain(host_of(url))
+    wanted = normalize_domain(site)
     return bool(host and wanted) and (host == wanted or host.endswith(f".{wanted}"))
