@@ -34,6 +34,9 @@ class Spec1LeadPacket:
     # record says when it says anything, through public_interest().
     public_question: str = ""
     public_interest_reason: str = ""
+    # Detector findings kept in the triage record's decomposition_receipt, such
+    # as the claim matcher's priority and shingle evidence. Never used by a gate.
+    receipt_details: Dict[str, Any] = field(default_factory=dict)  # noqa: UP006
 
 
 def _clean(value: object) -> str:

@@ -476,6 +476,7 @@ def test_lead_packet_contract_defaults_to_rule_based(tmp_path: Path) -> None:
         "analysis_tier",
         "public_question",
         "public_interest_reason",
+        "receipt_details",
     ]
     assert packet(tmp_path).analysis_tier == "rule_based"
 
@@ -979,12 +980,14 @@ def test_congress_for(moment: datetime, expected: tuple[int, int]) -> None:
     assert congress_for(moment) == expected
 
 
-def test_seldon_requires_an_api_key(
+def test_seldon_without_an_api_key_polls_only_the_federal_register(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("CONGRESS_API_KEY", raising=False)
-    with pytest.raises(ValueError, match="API key"):
-        SeldonCivicAdapter(spool_path=tmp_path / "s.db")
+    adapter = SeldonCivicAdapter(spool_path=tmp_path / "s.db")
+    assert not adapter.polls_congress
+    assert [item.name for item in adapter.poll_requests()] == ["rules"]
+    assert adapter.auth_headers() == {}
 
 
 def test_seldon_sends_key_as_header_never_in_url(tmp_path: Path) -> None:

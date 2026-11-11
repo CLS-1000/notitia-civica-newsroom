@@ -1,6 +1,8 @@
 """Seldon: federal law and regulation.
 
-Two sources:
+Two sources. The Federal Register needs no key and is always polled. Congress.gov
+is polled only when a Congress.gov API key is given or set in CONGRESS_API_KEY;
+without one Seldon runs keyless, on Federal Register rules alone.
 
 - Congress.gov API v3: bills that are enrolled, presented or signed, with House
   roll-call votes and the bill's CBO cost estimates. A bill lead needs the
@@ -244,10 +246,7 @@ class SeldonCivicAdapter(LazLongAdapter):
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        key = api_key or os.environ.get("CONGRESS_API_KEY")
-        if not key:
-            raise ValueError("a Congress.gov API key is required (CONGRESS_API_KEY)")
-        self._api_key = key
+        self._api_key = api_key or os.environ.get("CONGRESS_API_KEY") or None
         self._lookback_days = lookback_days
         self._rule_lookback_days = rule_lookback_days
 
@@ -264,14 +263,25 @@ class SeldonCivicAdapter(LazLongAdapter):
         # fields[] repeats, so the query lives in the URL rather than in params.
         return PollRequest("rules", f"{FR_API}?{urlencode(query)}")
 
+    @property
+    def polls_congress(self) -> bool:
+        """Whether Congress.gov bills and votes are polled: only with a key."""
+        return self._api_key is not None
+
     def auth_headers(self) -> dict[str, str]:
-        return {"X-Api-Key": self._api_key}
+        return {"X-Api-Key": self._api_key} if self._api_key else {}
+
+    def replays(self, request: PollRequest) -> bool:
+        # A keyless run leaves spooled Congress.gov requests for a run with a key.
+        return self.polls_congress or host_of(request.url) != CONGRESS_API_HOST
 
     def headers_for(self, url: str) -> dict[str, str]:
         # The key is for Congress.gov alone; the Federal Register needs none.
         return self.auth_headers() if host_of(url) == CONGRESS_API_HOST else {}
 
     def poll_requests(self) -> list[PollRequest]:
+        if not self.polls_congress:
+            return [self._rules_request()]
         now = self._clock()
         congress, session = congress_for(now)
         since = now - timedelta(days=self._lookback_days)

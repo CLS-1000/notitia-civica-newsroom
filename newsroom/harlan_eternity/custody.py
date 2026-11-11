@@ -74,12 +74,22 @@ def validate_tier(tier: str) -> None:
         raise ValueError(f"invalid source tier: {tier!r}")
 
 
+def normalize_domain(host: str) -> str:
+    """Return host case-folded, without a leading 'www.'.
+
+    www.politifact.com and politifact.com are one publisher. Other subdomains
+    are kept, since they can belong to a different outlet.
+    """
+    return host.casefold().removeprefix("www.")
+
+
 def extract_domain(url: str) -> str:
-    """Return the lowercase host of an http(s) URL, or raise ValueError."""
+    """Return the normalized host of an http(s) URL, or raise ValueError."""
     parts = urlsplit(url)
-    if parts.scheme not in {"http", "https"} or not parts.hostname:
+    domain = normalize_domain(parts.hostname or "")
+    if parts.scheme not in {"http", "https"} or not domain:
         raise ValueError(f"not an absolute http(s) URL: {url!r}")
-    return parts.hostname
+    return domain
 
 
 def decode_verbatim_text(raw: bytes, content_type: str | None) -> str | None:

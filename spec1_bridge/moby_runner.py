@@ -47,6 +47,7 @@ from pydantic import (
 from newsroom.harlan_eternity.custody import (
     decode_verbatim_text,
     extract_domain,
+    normalize_domain,
     validate_source_id,
     validate_tier,
 )
@@ -87,7 +88,7 @@ def _checked_url(value: str) -> str:
 
 
 def _checked_domain(value: str) -> str:
-    domain = value.lower()
+    domain = normalize_domain(value)
     if _DOMAIN_PATTERN.fullmatch(domain) is None:
         raise ValueError(f"invalid domain: {value!r}")
     return domain
@@ -226,11 +227,12 @@ def _find_harvested_source(conn: Connection, entry: SourceEntry) -> str | None:
     row = conn.execute(
         """
         SELECT source_id FROM source_registry
-        WHERE domain = %s AND raw_sha256 = %s
+        WHERE domain = ANY(%s) AND raw_sha256 = %s
         ORDER BY retrieved_at
         LIMIT 1
         """,
-        (entry.domain, entry.raw_sha256),
+        # Rows sealed before domains were normalized keep their 'www.'.
+        ([entry.domain, f"www.{entry.domain}"], entry.raw_sha256),
     ).fetchone()
     return None if row is None else str(row[0])
 
