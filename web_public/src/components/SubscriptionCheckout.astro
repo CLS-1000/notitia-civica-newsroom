@@ -1,0 +1,76 @@
+---
+// Commercial Pro tier: Pro Briefs and raw data access. Payment happens on the
+// processor's own hosted page; this component never collects payment details.
+// The checkout link comes from the checkoutUrl prop, else PUBLIC_PRO_CHECKOUT_URL
+// at build time. Without an https link it says subscriptions are not open yet.
+// The tax notice is mandatory and always rendered, open or not.
+interface Props {
+  checkoutUrl?: string;
+  priceLabel?: string;
+}
+
+const TAX_NOTICE =
+  "Subscriptions to Notitia Civica are commercial transactions supporting independent reporting by EVASTARARCANA LLC and are NOT tax-deductible.";
+
+const { checkoutUrl, priceLabel } = Astro.props;
+const configured = checkoutUrl ?? import.meta.env.PUBLIC_PRO_CHECKOUT_URL ?? "";
+let href: string | null = null;
+try {
+  href = configured && new URL(configured).protocol === "https:" ? configured : null;
+} catch {
+  href = null;
+}
+---
+
+<section class="subscription-checkout" aria-labelledby="pro-heading">
+  <h2 id="pro-heading">Notitia Civica Pro</h2>
+  <ul>
+    <li>Pro Briefs: the full daily brief, with every sealed source linked.</li>
+    <li>Raw data access: the public records behind our reporting, as published.</li>
+  </ul>
+  {priceLabel && <p class="subscription-price">{priceLabel}</p>}
+  {
+    href ? (
+      <a class="subscription-button" href={href} rel="noopener">
+        Subscribe to Pro
+      </a>
+    ) : (
+      <p class="empty-state">Pro subscriptions are not open yet.</p>
+    )
+  }
+  <p class="subscription-notice" role="note">{TAX_NOTICE}</p>
+</section>
+
+<style>
+  .subscription-checkout {
+    margin-block: var(--nc-space-6);
+    padding: var(--nc-space-4);
+    border: 1px solid var(--nc-rule-strong);
+    background: var(--nc-bg-card);
+    max-width: var(--nc-measure);
+  }
+
+  .subscription-price {
+    font: 700 var(--nc-text-lg) var(--nc-font-ui);
+  }
+
+  .subscription-button {
+    display: inline-block;
+    padding: var(--nc-space-2) var(--nc-space-4);
+    background: var(--nc-accent-civic);
+    color: var(--nc-ink-inverse);
+    font: 700 var(--nc-text-sm) var(--nc-font-ui);
+    text-decoration: none;
+  }
+
+  .subscription-button:focus-visible {
+    outline: 3px solid var(--nc-focus);
+    outline-offset: 2px;
+  }
+
+  .subscription-notice {
+    margin-block-start: var(--nc-space-4);
+    font: 700 var(--nc-text-sm) var(--nc-font-ui);
+    color: var(--nc-ink-primary);
+  }
+</style>

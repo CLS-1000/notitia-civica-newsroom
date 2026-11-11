@@ -1,0 +1,160 @@
+---
+import Base from "../../../layouts/Base.astro";
+import {
+  audits,
+  auditUrl,
+  formatDate,
+  formatPercent,
+  type BiasAudit,
+} from "../../../lib/data";
+
+export function getStaticPaths() {
+  return audits.map((audit) => ({ params: { period: audit.period }, props: { audit } }));
+}
+
+interface Props {
+  audit: BiasAudit;
+}
+
+const { audit } = Astro.props;
+const label = (value: string) => value.replaceAll("_", " ");
+const signed = (value: number | null) =>
+  value === null ? "n/a" : `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
+const others = audits.filter((item) => item.period !== audit.period);
+const flagged = audit.domain_coverage.filter((row) => row.flagged);
+---
+
+<Base
+  title={`Bias and sourcing audit, ${audit.period} | Notitia Civica`}
+  description={`What we covered, whom we cited, and what we corrected in the 30 days ending ${formatDate(audit.window.end)}.`}
+>
+  <div class="prose">
+    <h1>Bias and sourcing audit: {audit.period}</h1>
+    <p>
+      This scorecard covers the {audit.articles.total} articles we published
+      from {formatDate(audit.window.start)} up to {formatDate(audit.window.end)}
+      {audit.articles.retracted > 0 && <>, {audit.articles.retracted} of them since retracted</>}.
+      It is generated from our ledger and was produced on {formatDate(audit.generated_at)}.
+    </p>
+  </div>
+
+  <h2 id="coverage-heading">Coverage by civic domain</h2>
+  <p class="prose">
+    {`Targets come from ${audit.baseline.reference_source}. A domain is flagged when its article count is more than ${audit.baseline.max_allowed_divergence_sigma} standard deviations from its target.`}
+    {flagged.length === 0 ? " No domain is flagged this period." : ` ${flagged.length} flagged this period.`}
+  </p>
+  <div class="table-region" role="region" aria-labelledby="coverage-heading" tabindex="0">
+    <table class="data">
+      <caption>Share of articles against target, by domain</caption>
+      <thead>
+        <tr>
+          <th scope="col">Domain</th>
+          <th scope="col">Articles</th>
+          <th scope="col">Share</th>
+          <th scope="col">Target</th>
+          <th scope="col">Gap (points)</th>
+          <th scope="col">Deviation (sd)</th>
+          <th scope="col">Flagged</th>
+        </tr>
+      </thead>
+      <tbody>
+        {audit.domain_coverage.map((row) => (
+          <tr>
+            <th scope="row">{label(row.domain)}</th>
+            <td>{row.articles}</td>
+            <td>{formatPercent(row.share_pct)}</td>
+            <td>{formatPercent(row.target_pct)}</td>
+            <td>{signed(row.gap_pct_points)}</td>
+            <td>{signed(row.sigma)}</td>
+            <td>{row.flagged ? "Yes" : "No"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  {
+    audit.unmapped_domains.length > 0 && (
+      <p class="prose">
+        Not in any target domain:{" "}
+        {audit.unmapped_domains
+          .map((row) => `${label(row.value)} (${row.articles})`)
+          .join(", ")}
+        .
+      </p>
+    )
+  }
+
+  <h2 id="roles-heading">Whom we cited</h2>
+  <p class="prose">
+    {audit.source_roles.citations} citations, grouped by the role our editors
+    recorded for each source.
+  </p>
+  <div class="table-region" role="region" aria-labelledby="roles-heading" tabindex="0">
+    <table class="data">
+      <caption>Citations by source role group</caption>
+      <thead>
+        <tr>
+          <th scope="col">Group</th>
+          <th scope="col">Recorded roles</th>
+          <th scope="col">Citations</th>
+          <th scope="col">Share</th>
+        </tr>
+      </thead>
+      <tbody>
+        {audit.source_roles.groups.map((row) => (
+          <tr>
+            <th scope="row">{label(row.group)}</th>
+            <td>{row.roles.map(label).join(", ")}</td>
+            <td>{row.citations}</td>
+            <td>{formatPercent(row.share_pct)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Corrections and clarifications</h2>
+  <dl class="prose">
+    <dt>Factual corrections</dt>
+    <dd>
+      {`${audit.corrections.factual_corrections} (${formatPercent(audit.corrections.factual_correction_rate_pct)} of articles)`}
+    </dd>
+    <dt>Clarifications</dt>
+    <dd>
+      {`${audit.corrections.clarifications} (${formatPercent(audit.corrections.clarification_rate_pct)} of articles)`}
+    </dd>
+    <dt>Methodology updates</dt>
+    <dd>{audit.corrections.methodology_updates}</dd>
+  </dl>
+  <p class="prose">
+    Every correction is listed on our <a href="/trust/corrections/">corrections page</a>.
+  </p>
+
+  {
+    audit.notes.length > 0 && (
+      <>
+        <h2>Notes</h2>
+        <ul class="prose">
+          {audit.notes.map((note) => (
+            <li>{note}</li>
+          ))}
+        </ul>
+      </>
+    )
+  }
+
+  {
+    others.length > 0 && (
+      <>
+        <h2>Other periods</h2>
+        <ul>
+          {others.map((item) => (
+            <li>
+              <a href={auditUrl(item.period)}>{item.period}</a>
+            </li>
+          ))}
+        </ul>
+      </>
+    )
+  }
+</Base>

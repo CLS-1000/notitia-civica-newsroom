@@ -15,6 +15,7 @@
     "http://127.0.0.1:4321/oregon-civic-tracker/",
     "http://127.0.0.1:4321/trust/methodology/",
     "http://127.0.0.1:4321/trust/ownership/",
-    "http://127.0.0.1:4321/trust/corrections/"
+    "http://127.0.0.1:4321/trust/corrections/",
+    "http://127.0.0.1:4321/trust/audits/2026-10/"
   ]
 }

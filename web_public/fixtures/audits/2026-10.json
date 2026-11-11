@@ -1,0 +1,172 @@
+{
+  "articles": {
+    "retracted": 1,
+    "total": 3
+  },
+  "baseline": {
+    "max_allowed_divergence_sigma": 2.5,
+    "reference_source": "BLS Consumer Expenditure Survey & Oregon State Budget (2025-2027)"
+  },
+  "corrections": {
+    "articles_corrected_or_clarified": 1,
+    "clarification_rate_pct": 33.33,
+    "clarifications": 1,
+    "factual_correction_rate_pct": 33.33,
+    "factual_corrections": 1,
+    "methodology_updates": 0
+  },
+  "domain_coverage": [
+    {
+      "articles": 0,
+      "domain": "economy_supply_chain",
+      "flagged": false,
+      "gap_pct_points": -20.0,
+      "share_pct": 0.0,
+      "sigma": -0.87,
+      "target_pct": 20.0
+    },
+    {
+      "articles": 3,
+      "domain": "government_law",
+      "flagged": true,
+      "gap_pct_points": 82.0,
+      "share_pct": 100.0,
+      "sigma": 3.7,
+      "target_pct": 18.0
+    },
+    {
+      "articles": 0,
+      "domain": "science_health",
+      "flagged": false,
+      "gap_pct_points": -16.0,
+      "share_pct": 0.0,
+      "sigma": -0.76,
+      "target_pct": 16.0
+    },
+    {
+      "articles": 0,
+      "domain": "infrastructure",
+      "flagged": false,
+      "gap_pct_points": -12.0,
+      "share_pct": 0.0,
+      "sigma": -0.64,
+      "target_pct": 12.0
+    },
+    {
+      "articles": 0,
+      "domain": "energy_environment",
+      "flagged": false,
+      "gap_pct_points": -10.0,
+      "share_pct": 0.0,
+      "sigma": -0.58,
+      "target_pct": 10.0
+    },
+    {
+      "articles": 0,
+      "domain": "labor_trades",
+      "flagged": false,
+      "gap_pct_points": -8.0,
+      "share_pct": 0.0,
+      "sigma": -0.51,
+      "target_pct": 8.0
+    },
+    {
+      "articles": 0,
+      "domain": "security_defense",
+      "flagged": false,
+      "gap_pct_points": -6.0,
+      "share_pct": 0.0,
+      "sigma": -0.44,
+      "target_pct": 6.0
+    },
+    {
+      "articles": 0,
+      "domain": "technology_cyber",
+      "flagged": false,
+      "gap_pct_points": -5.0,
+      "share_pct": 0.0,
+      "sigma": -0.4,
+      "target_pct": 5.0
+    },
+    {
+      "articles": 0,
+      "domain": "culture_anomalies",
+      "flagged": false,
+      "gap_pct_points": -5.0,
+      "share_pct": 0.0,
+      "sigma": -0.4,
+      "target_pct": 5.0
+    }
+  ],
+  "generated_at": "2026-11-01T06:00:00+00:00",
+  "notes": [
+    "Frontline counts sources the desk recorded as affected parties; the desk's roles do not separate tradespeople from other affected parties."
+  ],
+  "period": "2026-10",
+  "source_roles": {
+    "citations": 5,
+    "groups": [
+      {
+        "citations": 0,
+        "group": "government",
+        "roles": [
+          "government_record",
+          "official"
+        ],
+        "share_pct": 0.0
+      },
+      {
+        "citations": 0,
+        "group": "academic_expert",
+        "roles": [
+          "independent_expert"
+        ],
+        "share_pct": 0.0
+      },
+      {
+        "citations": 0,
+        "group": "frontline",
+        "roles": [
+          "affected_party"
+        ],
+        "share_pct": 0.0
+      },
+      {
+        "citations": 0,
+        "group": "industry",
+        "roles": [
+          "industry"
+        ],
+        "share_pct": 0.0
+      },
+      {
+        "citations": 0,
+        "group": "advocacy",
+        "roles": [
+          "advocacy"
+        ],
+        "share_pct": 0.0
+      },
+      {
+        "citations": 5,
+        "group": "unassigned",
+        "roles": [
+          "unassigned"
+        ],
+        "share_pct": 100.0
+      }
+    ],
+    "roles": [
+      {
+        "citations": 5,
+        "role": "unassigned",
+        "share_pct": 100.0
+      }
+    ]
+  },
+  "unmapped_domains": [],
+  "window": {
+    "end": "2026-11-01T00:00:00+00:00",
+    "start": "2026-10-02T00:00:00+00:00"
+  }
+}
