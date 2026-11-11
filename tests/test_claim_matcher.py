@@ -32,12 +32,14 @@ from spec1_bridge.adapters.claim_matcher import (
     FACT_CHECK_TIER,
     FACTCHECK_API,
     ZOMBIE_AGE_DAYS,
+    ZOMBIE_SIGNAL,
     ClaimIndex,
     ClaimMatcherAdapter,
     DocumentedClaim,
     FactCheckReview,
     NarrativeCluster,
     jaccard,
+    load_narrative_clusters,
     parse_claims,
     query_text,
     shingle_receipt,
@@ -51,9 +53,14 @@ from spec1_bridge.contracts import SourceArtifact
 from spec1_bridge.mycroft_triage import (
     independent_publishers,
     run_adapter,
+    run_claim_matcher,
     triage_packets,
 )
-from spec1_bridge.sociology_telemetry import StreamPost
+from spec1_bridge.sociology_telemetry import (
+    DecompositionReceipt,
+    StreamPost,
+    write_observation,
+)
 
 FACTCHECK_KEY = "test-factcheck-key-do-not-spool"
 
@@ -674,3 +681,131 @@ def test_triage_always_registers_seldon(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(psycopg, "connect", lambda *_a, **_k: Ledger())
     assert mycroft_triage.main(["--dsn", "dbname=unused"]) == 0
     assert "seldon_civic" in seen
+
+
+# --- Triage runs the matcher on Domain 6 narratives ------------------------------
+
+
+def observe(
+    db: Conn,
+    text: str = LOCALIZED,
+    at: datetime = FIRST_SEEN,
+    domain: int = 6,
+    events: int = 42,
+) -> None:
+    write_observation(
+        db,
+        domain=domain,
+        narrative_label="ballot shredding",
+        observed_text=text,
+        receipt=DecompositionReceipt(
+            detector="hawkes_narrative_engine",
+            finding="A near-duplicate narrative is spreading.",
+            reasons=("Posts arrived faster than chance.",),
+            caveat="This does not show who posted the text or whether it is true.",
+            metrics={"events": events, "span_hours": 5.5, "platforms": ["bluesky"]},
+        ),
+        observed_at=at,
+    )
+
+
+def test_domain6_observations_become_clusters(db: Conn) -> None:
+    observe(db, events=30)
+    observe(db, at=FIRST_SEEN + timedelta(hours=10), events=55)
+    observe(db, UNRELATED, domain=5)
+    observe(db, UNRELATED, at=NOW - timedelta(days=45))
+
+    [found] = load_narrative_clusters(db, NOW)
+    assert found.text == LOCALIZED
+    assert found.first_seen == FIRST_SEEN
+    assert found.last_seen == FIRST_SEEN + timedelta(hours=15.5)
+    assert (found.size, found.platforms) == (55, ("bluesky",))
+
+
+def test_triage_registers_zombie_claims_from_domain6(
+    tmp_path: Path, db: Conn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GOOGLE_FACTCHECK_API_KEY", raising=False)
+    observe(db)
+    observe(db, UNRELATED, at=FIRST_SEEN + timedelta(hours=1))
+    cache = tmp_path / "claimreview.db"
+    matcher(tmp_path, router(), api_key=None).cache.add(
+        parse_claims(claim_payload(politifact(), ap()))
+    )
+    mock = router()
+    adapter_options = options(tmp_path, mock)
+
+    report = run_claim_matcher(cache, db, ollama()[0], NOW, **adapter_options)
+
+    assert report.rejected == [] and len(report.written) == 1
+    assert mock.calls_to(FACTCHECK_API) == []
+    row = db.execute(
+        """
+        SELECT anomaly_score, decomposition_receipt -> 'detector', source_ids
+        FROM triage_records WHERE adapter_name = 'claim_matcher'
+        """
+    ).fetchone()
+    assert row is not None
+    score, detector, source_ids = row
+    assert score == 85.0
+    assert (detector["signal"], detector["priority"]) == (ZOMBIE_SIGNAL, "HIGH")
+    assert detector["incoming_text"] == LOCALIZED
+    sealed = db.execute(
+        "SELECT count(*) FROM source_registry WHERE source_id = ANY(%s)",
+        (source_ids,),
+    ).fetchone()
+    assert sealed == (2,)
+
+    again = run_claim_matcher(cache, db, ollama()[0], NOW, **adapter_options)
+    assert again.written == [] and again.rejected == []
+
+
+class FakeLedger:
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+
+def triage_main(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> list[tuple[str, Any]]:
+    calls: list[tuple[str, Any]] = []
+
+    def fake_matcher(cache: Any, _conn: Any, _enricher: Any) -> Any:
+        calls.append(("claim_matcher", cache))
+        return mycroft_triage.TriageReport()
+
+    def fake_run(adapter: Any, _conn: Any, _enricher: Any) -> Any:
+        calls.append((adapter.adapter_name, None))
+        return mycroft_triage.TriageReport()
+
+    monkeypatch.setattr(mycroft_triage, "run_claim_matcher", fake_matcher)
+    monkeypatch.setattr(mycroft_triage, "run_adapter", fake_run)
+    monkeypatch.setattr(psycopg, "connect", lambda *_a, **_k: FakeLedger())
+    assert mycroft_triage.main(["--dsn", "dbname=unused", *argv]) == 0
+    return [call for call in calls if call[0] == "claim_matcher"]
+
+
+def test_triage_runs_the_matcher_with_the_cache_flag(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("CLAIM_CACHE_PATH", raising=False)
+    calls = triage_main(monkeypatch, ["--claim-matcher-cache", "/tmp/cr.db"])
+    assert calls == [("claim_matcher", "/tmp/cr.db")]
+    assert '"claim_matcher": {"written": 0, "rejected": 0}' in capsys.readouterr().out
+
+
+def test_triage_runs_the_matcher_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLAIM_CACHE_PATH", "/tmp/env-cr.db")
+    assert triage_main(monkeypatch, []) == [("claim_matcher", "/tmp/env-cr.db")]
+
+
+def test_triage_skips_the_matcher_without_a_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CLAIM_CACHE_PATH", raising=False)
+    assert triage_main(monkeypatch, []) == []

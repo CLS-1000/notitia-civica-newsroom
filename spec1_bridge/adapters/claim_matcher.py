@@ -39,7 +39,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from newsroom.harlan_eternity.custody import normalize_domain
 from spec1_bridge.adapters.base_lazlong import (
@@ -74,6 +74,8 @@ MATCH_THRESHOLD: Final = 0.65
 ZOMBIE_AGE_DAYS: Final = 180
 ZOMBIE_SCORE: Final = 85.0
 ZOMBIE_PRIORITY: Final = "HIGH"
+ZOMBIE_SIGNAL: Final = "ZOMBIE_CLAIM_RECYCLED"
+CLUSTER_LOOKBACK_DAYS: Final = 30
 
 # Two signature rows per band: a pair at Jaccard 0.65 shares a band with
 # probability 1 - (1 - 0.65**2)**32, above 0.99999, so candidates are not missed.
@@ -521,6 +523,74 @@ def _quoted_claim(text: str) -> str:
     return flat[:QUESTION_CLAIM_MAX_CHARS].rsplit(" ", 1)[0] + "…"
 
 
+# --- Domain 6 clusters from the ledger -----------------------------------------
+
+
+class _Rows(Protocol):
+    def fetchall(self) -> list[tuple[Any, ...]]: ...
+
+
+class _Ledger(Protocol):
+    def execute(self, query: str, params: tuple[Any, ...] = ...) -> _Rows: ...
+
+
+def _float(value: Any) -> float:
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def load_narrative_clusters(
+    conn: _Ledger, now: datetime, lookback_days: int = CLUSTER_LOOKBACK_DAYS
+) -> list[NarrativeCluster]:
+    """Domain 6 narratives quarantined in the last lookback_days, one per text.
+
+    The Hawkes engine writes each cluster's representative text, first sighting,
+    and receipt metrics (events, span_hours, platforms). Repeat sightings of one
+    narrative merge: earliest first sighting, latest last sighting, largest size.
+    """
+    rows = conn.execute(
+        """
+        SELECT observed_text, observed_at, metrics
+        FROM sociology_telemetry.narrative_observations
+        WHERE domain = %s AND observed_at >= %s
+        ORDER BY observed_at, observation_id
+        """,
+        (DOMAIN, now - timedelta(days=lookback_days)),
+    ).fetchall()
+    merged: dict[str, NarrativeCluster] = {}
+    for text, observed_at, metrics in rows:
+        if not isinstance(text, str) or not text.strip():
+            continue
+        receipt = metrics.get("receipt") if isinstance(metrics, dict) else None
+        figures = receipt.get("metrics") if isinstance(receipt, dict) else None
+        figures = figures if isinstance(figures, dict) else {}
+        platforms = figures.get("platforms")
+        cluster = NarrativeCluster(
+            text=text,
+            first_seen=observed_at,
+            last_seen=observed_at + timedelta(hours=_float(figures.get("span_hours"))),
+            size=max(1, int(_float(figures.get("events")))),
+            platforms=tuple(
+                sorted(str(item) for item in platforms)
+                if isinstance(platforms, list | dict)
+                else ()
+            ),
+        )
+        held = merged.get(cluster.fingerprint)
+        if held is not None:
+            cluster = NarrativeCluster(
+                text=held.text,
+                first_seen=min(held.first_seen, cluster.first_seen),
+                last_seen=max(held.last_seen, cluster.last_seen),
+                size=max(held.size, cluster.size),
+                platforms=tuple(sorted({*held.platforms, *cluster.platforms})),
+            )
+        merged[cluster.fingerprint] = cluster
+    return list(merged.values())
+
+
 # --- Adapter ------------------------------------------------------------------
 
 
@@ -652,6 +722,7 @@ class ClaimMatcherAdapter(LazLongAdapter):
         cluster: NarrativeCluster = record["cluster"]
         return {
             "detector": self.adapter_name,
+            "signal": ZOMBIE_SIGNAL,
             "domain": DOMAIN,
             "priority": ZOMBIE_PRIORITY,
             "incoming_text": cluster.text,

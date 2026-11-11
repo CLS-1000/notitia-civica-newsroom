@@ -10,6 +10,7 @@ unreachable model only leaves the record without enrichment.
 
 Usage:
     python -m spec1_bridge.mycroft_triage --session-key 2026R1
+    python -m spec1_bridge.mycroft_triage --claim-matcher-cache data/claimreview_cache.db
     python -m spec1_bridge.mycroft_triage --proc-track-path ~/proc_track_main \\
         --proc-track-session 2025R1
 """
@@ -38,6 +39,10 @@ from spec1_bridge.adapters.base_lazlong import (
     LazLongAdapter,
     excerpt_is_verbatim,
     read_artifact_text,
+)
+from spec1_bridge.adapters.claim_matcher import (
+    ClaimMatcherAdapter,
+    load_narrative_clusters,
 )
 from spec1_bridge.adapters.delos_econ import DelosEconAdapter
 from spec1_bridge.adapters.seldon_civic import SeldonCivicAdapter
@@ -466,6 +471,30 @@ def run_proc_track(
     return triage_packets(imported.packets, "oregon_civic", conn, enricher)
 
 
+def run_claim_matcher(
+    cache_path: str | Path,
+    conn: Connection,
+    enricher: OllamaEnricher,
+    now: datetime | None = None,
+    **adapter_options: Any,
+) -> TriageReport:
+    """Match recent Domain 6 narratives against the ClaimReview cache, then triage.
+
+    Leads are ZOMBIE_CLAIM_RECYCLED: a narrative reusing the wording of a claim
+    fact-checkers debunked over 180 days earlier. With GOOGLE_FACTCHECK_API_KEY
+    set the cache is refreshed from the Fact Check Tools API first.
+    """
+    moment = now if now is not None else datetime.now(UTC)
+    clusters = load_narrative_clusters(conn, moment)
+    logger.info("claim_matcher: %d Domain 6 narratives to check", len(clusters))
+    adapter = ClaimMatcherAdapter(
+        clusters,
+        cache_path=Path(cache_path),
+        **({"clock": lambda: moment} | adapter_options),
+    )
+    return run_adapter(adapter, conn, enricher)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -514,6 +543,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Session to replay from proc_track's cache (default: --session-key)",
     )
     parser.add_argument(
+        "--claim-matcher-cache",
+        default=os.environ.get("CLAIM_CACHE_PATH"),
+        help=(
+            "Path to the local ClaimReview cache (SQLite); Domain 6 narratives are "
+            "matched against it for recycled claims. Skipped without one"
+        ),
+    )
+    parser.add_argument(
         "--proc-track-only",
         action="store_true",
         help="Run only the proc_track import, no network adapters",
@@ -541,6 +578,10 @@ def main(argv: list[str] | None = None) -> int:
             adapter.adapter_name: run_adapter(adapter, conn, enricher)
             for adapter in adapters
         }
+        if args.claim_matcher_cache and not args.proc_track_only:
+            reports["claim_matcher"] = run_claim_matcher(
+                args.claim_matcher_cache, conn, enricher
+            )
         if args.pdx1_store:
             reports["pdx1_importer"] = run_pdx1(
                 args.pdx1_store, args.pdx1_min_priority, conn, enricher
