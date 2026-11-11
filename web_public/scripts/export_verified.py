@@ -9,6 +9,8 @@ with its explanation. One that cannot be exported also fails the run, so a
 retraction never disappears silently. Corrections to exported articles go to
 corrections.json; a correction to a withheld article is withheld with it. It
 reads no other schema, and exports neither source text nor sign-off internals.
+A restricted source (restricted_sources) is exported without its URL or archive
+link.
 
 Standalone by design: it needs only psycopg, so it can run away from the newsroom
 code. The hash below must stay identical to newsroom/harlan_eternity/signoff.py,
@@ -78,9 +80,11 @@ _REPLIES: Final = """
 """
 
 _SOURCES: Final = """
-    SELECT source_id, url, domain, tier, raw_sha256, archive_path, retrieved_at
-    FROM source_registry
-    WHERE source_id = ANY(%s)
+    SELECT s.source_id, s.url, s.domain, s.tier, s.raw_sha256, s.archive_path,
+           s.retrieved_at, (r.source_id IS NOT NULL) AS restricted
+    FROM source_registry s
+    LEFT JOIN restricted_sources r USING (source_id)
+    WHERE s.source_id = ANY(%s)
 """
 
 
@@ -99,13 +103,17 @@ def _iso(moment: datetime) -> str:
 
 
 def _public_source(row: dict[str, Any], archive_base: str | None) -> dict[str, Any]:
+    """A source as readers see it. A restricted source (Editor Eyes Only) keeps
+    its domain, tier, and hash but loses its URL and archive link, which can
+    carry a protected location."""
+    restricted = bool(row.get("restricted"))
     archive_url = None
-    if archive_base:
+    if archive_base and not restricted:
         name = Path(str(row["archive_path"])).name
         archive_url = f"{archive_base.rstrip('/')}/{name}"
     return {
         "source_id": row["source_id"],
-        "url": row["url"],
+        "url": None if restricted else row["url"],
         "domain": row["domain"],
         "tier": row["tier"],
         "raw_sha256": row["raw_sha256"],
