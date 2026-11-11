@@ -17,8 +17,8 @@ those shingles picks the candidates; the decision is the exact Jaccard, so a
 threshold never depends on hash luck.
 
 Each review page is sealed as tier_2_institutional, one per publisher, so the
-core Corroboration Gate's two distinct sources mean two independent
-fact-checkers. A single fact-check is a lead that triage rejects.
+core Corroboration Gate, which counts distinct publisher domains, sees two
+independent fact-checkers. A single fact-check is a lead that triage rejects.
 
 What a match shows, and no more: the new text reuses the wording of a claim
 that fact-checkers evaluated. It does not show who posted it, why, or that the

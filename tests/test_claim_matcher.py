@@ -7,6 +7,7 @@ URL it was not given.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Self
@@ -46,7 +47,12 @@ from spec1_bridge.adapters.seldon_civic import (
     FR_API,
     SeldonCivicAdapter,
 )
-from spec1_bridge.mycroft_triage import run_adapter, triage_packets
+from spec1_bridge.contracts import SourceArtifact
+from spec1_bridge.mycroft_triage import (
+    independent_publishers,
+    run_adapter,
+    triage_packets,
+)
 from spec1_bridge.sociology_telemetry import StreamPost
 
 FACTCHECK_KEY = "test-factcheck-key-do-not-spool"
@@ -63,6 +69,14 @@ UNRELATED = (
 )
 
 FIRST_SEEN = NOW - timedelta(hours=6)
+FAKE_ARTIFACT = SourceArtifact(
+    source_id="S-1",
+    tier=FACT_CHECK_TIER,
+    origin_url="https://example.org/",
+    sha256_hash="0" * 64,
+    raw_payload_path="/nonexistent",
+    captured_at=NOW,
+)
 OLD_REVIEW = date(2024, 11, 20)  # about two years before FIRST_SEEN
 
 POLITIFACT_URL = "https://www.politifact.com/factchecks/2024/nov/20/ballots-shredded/"
@@ -469,8 +483,48 @@ def test_one_fact_check_is_rejected_by_triage(tmp_path: Path, db: Conn) -> None:
     report = triage_packets([packet], "narrative_integrity", db, ollama()[0], NOW)
     assert report.written == []
     assert [(item.gate, item.reason) for item in report.rejected] == [
-        ("corroboration", "needs one primary or 2 distinct sources")
+        ("corroboration", "needs one primary or 2 independent publisher domains")
     ]
+
+
+def test_independent_publishers_counts_domains_not_urls() -> None:
+    def at(url: str) -> Any:
+        return replace(FAKE_ARTIFACT, origin_url=url)
+
+    same_outlet = [at(POLITIFACT_URL), at(f"{POLITIFACT_URL}follow-up/")]
+    assert independent_publishers(same_outlet) == {"www.politifact.com"}
+    assert independent_publishers([at(POLITIFACT_URL), at(AP_URL)]) == {
+        "www.politifact.com",
+        "apnews.com",
+    }
+    assert independent_publishers([at("not a url"), at("ftp://x.org/a")]) == set()
+
+
+def test_two_urls_from_one_outlet_are_rejected_by_triage(
+    tmp_path: Path, db: Conn
+) -> None:
+    [packet] = harvest(tmp_path, claim_payload(politifact())).packets
+    [sealed] = packet.source_artifacts
+    second = replace(
+        sealed, source_id="S-900", origin_url=f"{POLITIFACT_URL}follow-up/"
+    )
+    packet.source_artifacts = [sealed, second]
+    report = triage_packets([packet], "narrative_integrity", db, ollama()[0], NOW)
+    assert report.written == []
+    assert [item.gate for item in report.rejected] == ["corroboration"]
+
+
+def test_two_outlets_pass_triage_even_with_the_same_page(
+    tmp_path: Path, db: Conn
+) -> None:
+    [packet] = harvest(tmp_path, claim_payload(politifact())).packets
+    [sealed] = packet.source_artifacts
+    packet.source_artifacts = [
+        sealed,
+        replace(sealed, source_id="S-901", origin_url=AP_URL),
+    ]
+    report = triage_packets([packet], "narrative_integrity", db, ollama()[0], NOW)
+    assert report.rejected == [] and report.written == [packet.lead_id]
 
 
 @pytest.mark.parametrize("extra", [[ap], [ap, reuters]], ids=["two", "three"])

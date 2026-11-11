@@ -208,6 +208,26 @@ def _excerpt_problem(packet: Spec1LeadPacket) -> str | None:
     return None
 
 
+def _publisher_domain(url: str) -> str | None:
+    try:
+        return extract_domain(url)
+    except ValueError:
+        return None
+
+
+def independent_publishers(artifacts: Sequence[SourceArtifact]) -> set[str]:
+    """The distinct publisher domains among artifacts.
+
+    Two pages from one outlet are one source, however many URLs they have. An
+    artifact without an http(s) URL names no publisher and counts for none.
+    """
+    return {
+        domain
+        for item in artifacts
+        if (domain := _publisher_domain(item.origin_url)) is not None
+    }
+
+
 def _corroboration_gate(packet: Spec1LeadPacket) -> GateResult:
     problem = _excerpt_problem(packet)
     if problem:
@@ -215,12 +235,12 @@ def _corroboration_gate(packet: Spec1LeadPacket) -> GateResult:
     artifacts = packet.source_artifacts
     if any(item.tier == "tier_1_primary" for item in artifacts):
         return GateResult("corroboration", True)
-    if len({item.origin_url for item in artifacts}) >= MIN_INDEPENDENT_SOURCES:
+    if len(independent_publishers(artifacts)) >= MIN_INDEPENDENT_SOURCES:
         return GateResult("corroboration", True)
     return GateResult(
         "corroboration",
         False,
-        f"needs one primary or {MIN_INDEPENDENT_SOURCES} distinct sources",
+        f"needs one primary or {MIN_INDEPENDENT_SOURCES} independent publisher domains",
     )
 
 
