@@ -1,0 +1,13 @@
+<div class="epistemic" aria-label="What is verified and what is uncertain">
+  <div class="epi verified"><h3>Verified</h3>
+    {% if verified %}<ul>{% for item in verified %}<li>{{ item }}</li>{% endfor %}</ul>{% else %}<p class="muted">No verified claims recorded.</p>{% endif %}
+  </div>
+  <div class="epi uncertain"><h3>Uncertain</h3>
+    {% if uncertain %}<ul>{% for item in uncertain %}<li>{{ item }}</li>{% endfor %}</ul>{% else %}<p class="muted">No uncertainty disclosed.</p>{% endif %}
+  </div>
+  {% if steelman %}
+  <div class="epi steelman"><h3>Steelman</h3>{% for item in steelman %}<p>{{ item }}</p>{% endfor %}</div>
+  {% else %}
+  <div class="epi steelman empty"><h3>Steelman</h3><p class="muted">Start a paragraph with "Steelman:" to state the strongest case against this story's reading.</p></div>
+  {% endif %}
+</div>

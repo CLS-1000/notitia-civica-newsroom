@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Evidence Vault · Penfield Desk{% endblock %}
+{% block main %}
+<main class="tabpage">
+  <div class="tabhead">
+    <h1>Evidence Vault</h1>
+    <form class="filters" hx-get="/vault" hx-target="#vault-results" hx-swap="outerHTML" hx-trigger="input delay:250ms, change" hx-push-url="true">
+      <label>Search <input type="search" name="q" value="{{ q }}" placeholder="source_id, domain, URL, or SHA-256"></label>
+      <label class="check"><input type="checkbox" name="flagged"{% if flagged %} checked{% endif %}> Tier-review flagged only</label>
+    </form>
+  </div>
+  {% include "_vault_rows.html" %}
+  <dialog id="raw-modal" class="modal"><div id="raw-body"></div></dialog>
+</main>
+{% endblock %}

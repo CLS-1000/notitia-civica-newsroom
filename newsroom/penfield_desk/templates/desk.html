@@ -1,18 +1,6 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Penfield Desk</title>
-  <link rel="icon" href="data:,">
-  <!-- 422 carries the refusal reasons for sign-off, corrections and the reply log,
-       so swap it in like a success. htmx 2 drops every 4xx by default. -->
-  <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
-  <link rel="stylesheet" href="/static/tokens.css">
-  <link rel="stylesheet" href="/static/desk.css">
-  <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/desk.js" defer></script>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Editorial Desk · Penfield Desk{% endblock %}
+{% block main %}
 <main class="desk">
   <section class="pane" aria-label="Leads and sources">
     <div class="queue">
@@ -133,5 +121,4 @@
   <section class="pane"><h1>Gates</h1></section>
   {% endif %}
 </main>
-</body>
-</html>
+{% endblock %}

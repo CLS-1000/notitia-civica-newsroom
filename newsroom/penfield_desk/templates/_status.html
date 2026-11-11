@@ -1,0 +1,9 @@
+<div class="sysstatus" id="sysstatus" hx-get="/status" hx-trigger="every 30s" hx-swap="outerHTML" aria-live="polite">
+  {% if status.db_ok %}
+  <span class="pill ok" title="radiant_ledger reachable">● DB ONLINE</span>
+  <span class="pill"><b>{{ status.articles }}</b> articles · <b>{{ status.published }}</b> live</span>
+  <span class="pill">Last harvest <b>{{ status.last_harvest or "never" }}</b></span>
+  {% else %}
+  <span class="pill bad" title="{{ status.db_error }}">● DB OFFLINE</span>
+  {% endif %}
+</div>

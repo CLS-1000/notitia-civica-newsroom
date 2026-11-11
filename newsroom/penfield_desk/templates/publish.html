@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Publish &amp; Deploy · Penfield Desk{% endblock %}
+{% block main %}
+<main class="tabpage publish">
+  <div class="tabhead">
+    <h1>Publish &amp; Deploy</h1>
+    <p class="muted">Live site: <a href="{{ config.public_url }}" target="_blank" rel="noopener">{{ config.public_url }}</a></p>
+  </div>
+  <div class="publish-grid">
+    <section>
+      <h2 class="section-title">Signed articles ({{ articles | length }})</h2>
+      <table class="dense">
+        <thead><tr><th>Headline</th><th>Section</th><th>Editor</th><th>Published</th><th>Proof</th></tr></thead>
+        <tbody>
+        {% for a in articles %}
+        <tr><td><a href="/?article={{ a.slug }}">{{ a.headline }}</a> <span class="badge">{{ a.badge_type }}</span></td><td>{{ a.section }}</td><td>{{ a.editor_name }}</td><td class="muted">{{ a.published_at.strftime("%Y-%m-%d") if a.published_at else "—" }}</td><td class="hash"><code>{{ a.editorial_proof_hash[:12] }}…</code></td></tr>
+        {% else %}
+        <tr><td colspan="5" class="muted">No signed, llm_verified articles yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    <section class="deploy-panel">
+      <h2 class="section-title">Deploy to Public Site</h2>
+      <ol class="muted steps-help">
+        <li>Export verified articles to <code>web_public/src/data</code></li>
+        <li><code>npx astro build --base {{ config.base }}</code></li>
+        <li>Copy <code>dist/</code> into <code>{{ config.target }}</code> (.git untouched, nothing deleted)</li>
+        <li>Commit only the copied files and push to GitHub Pages</li>
+      </ol>
+      <button class="publish" type="button" hx-post="/publish/deploy" hx-target="#deploy-log" hx-swap="outerHTML" hx-confirm="Export, build, and push the public site now?"{% if run and run.running %} disabled{% endif %}>Build &amp; Sync to Public Site</button>
+      {% include "_deploy_log.html" %}
+    </section>
+  </div>
+</main>
+{% endblock %}

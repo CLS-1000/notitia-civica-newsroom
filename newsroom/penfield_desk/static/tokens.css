@@ -1,8 +1,8 @@
 /* Penfield Desk design tokens: tactical slate. */
 :root {
   color-scheme: dark;
-  --pf-bg-base: #0f1419;
-  --pf-bg-pane: #151b22;
+  --pf-bg-base: #0e1116;
+  --pf-bg-pane: #161b22;
   --pf-bg-raised: #1d252e;
   --pf-bg-input: #0b1014;
   --pf-bg-highlight-match: #ffe45c;
@@ -11,6 +11,8 @@
   --pf-text: #dfe6ed;
   --pf-text-muted: #93a1b0;
   --pf-accent: #6cb6ff;
+  --pf-accent-deep: #1d4e56;
+  --pf-bar-h: 44px;
   --pf-pass: #4fd18b;
   --pf-fail: #ff7b72;
   --pf-warn: #e3b341;

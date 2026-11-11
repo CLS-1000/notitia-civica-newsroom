@@ -59,6 +59,25 @@ uv run python web_public/scripts/export_verified.py --out web_public/src/data
 cd web_public && npm ci && npm run build
 ```
 
+### Master Control Cockpit
+
+The desk at http://127.0.0.1:8000 has five tabs: Fleet Control, Triage Queue,
+Editorial Desk, Evidence Vault, and Publish & Deploy.
+
+- **Fleet Control** runs a harvest for any engine whose inputs are available.
+  Engines that need files or keys read them from the desk's environment:
+  `OLIS_SESSION_KEY` (Ubik), `UBIK_SPECTRAL_REPORTS`, `PDX1_STORE_PATH`,
+  `SPEC1_STORE_PATH` (+ `SPEC1_VERDICTS_PATH`), `PROC_TRACK_PATH` +
+  `PROC_TRACK_SESSION`, `CLAIM_CACHE_PATH` or `GOOGLE_FACTCHECK_API_KEY`.
+  Valis, Trantor, Eschaton, Gnosis and Deckard need editor-supplied inputs and
+  show why instead of running. Runs are logged to `data/fleet_runs.jsonl`.
+- **Evidence Vault** reads sealed blobs relative to `NOTITIA_ARCHIVE_ROOT`
+  (default: the repo root) and re-hashes them on every view.
+- **Publish & Deploy** exports, runs `npx astro build --base /notitia-civica-ux`,
+  copies `web_public/dist` over `~/notitia-civica` (adding and replacing files,
+  never deleting, never touching `.git`), then commits only the copied files and
+  pushes, which deploys https://cls-1000.github.io/notitia-civica-ux/.
+
 `npm run build:sample` builds the site from the labelled sample fixtures in
 `web_public/fixtures/` instead of the ledger.
 

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Triage Queue · Penfield Desk{% endblock %}
+{% block main %}
+<main class="tabpage">
+  <div class="tabhead">
+    <h1>Triage Queue</h1>
+    <form class="filters" hx-get="/triage" hx-target="#triage-rows" hx-swap="outerHTML" hx-trigger="change, input delay:200ms from:#min-score" hx-push-url="true">
+      <label>Domain
+        <select name="family">
+          <option value="">All domains</option>
+          {% for f in families %}<option value="{{ f }}"{% if f == family %} selected{% endif %}>{{ f }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Minimum anomaly score <output id="score-out">{{ '%.0f' % min_score }}</output>
+        <input type="range" id="min-score" name="min_score" min="0" max="100" step="1" value="{{ '%.0f' % min_score }}" oninput="document.getElementById('score-out').value=this.value">
+      </label>
+    </form>
+  </div>
+  {% include "_triage_rows.html" %}
+</main>
+{% endblock %}

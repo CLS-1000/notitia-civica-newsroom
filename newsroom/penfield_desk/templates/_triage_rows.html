@@ -1,0 +1,22 @@
+<div id="triage-rows">
+  <p class="muted count">{{ rows | length }} lead{{ '' if rows|length == 1 else 's' }}{% if family %} in {{ family }}{% endif %} scoring ≥ {{ '%.0f' % min_score }}</p>
+  <table class="dense">
+    <thead><tr><th>Score</th><th>Domain</th><th>Engine</th><th>Core question</th><th>Sources</th><th>Staged</th><th></th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+    <tr class="lead-row" hx-get="/triage/{{ row.record_id }}" hx-target="#detail-{{ row.record_id }}" hx-swap="innerHTML" hx-trigger="click once" tabindex="0">
+      <td class="score">{{ '%.1f' % row.anomaly_score }}</td>
+      <td><span class="badge fam-{{ family_of(row.subject_domain) | lower }}" title="{{ row.subject_domain }}">{{ family_of(row.subject_domain) }}</span></td>
+      <td><code>{{ row.adapter_name }}</code></td>
+      <td class="question">{{ row.public_question or "—" }}</td>
+      <td>{{ row.source_ids | length }}</td>
+      <td class="muted">{{ row.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td>{% if row.slug %}<a class="chip" href="/?article={{ row.slug }}">On desk · {{ row.article_status }}</a>{% endif %}</td>
+    </tr>
+    <tr class="detail-row"><td colspan="7" id="detail-{{ row.record_id }}"></td></tr>
+    {% else %}
+    <tr><td colspan="7" class="muted">No leads match these filters.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

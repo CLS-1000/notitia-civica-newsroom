@@ -1,0 +1,29 @@
+{% set receipt = lead.decomposition_receipt %}
+<div class="lead-detail" data-record="{{ lead.record_id }}">
+  <dl class="public-interest">
+    <dt>Core Question</dt>
+    <dd>{{ lead.public_question or "Not stated by the lead." }}</dd>
+    <dt>Public Interest Reason</dt>
+    <dd>{{ lead.public_interest_reason or "Not stated by the lead." }}</dd>
+  </dl>
+  <h3>Plain-English Decomposition Receipt</h3>
+  <ul class="receipt-gates">
+  {% for gate in receipt.get('gates', []) %}
+    <li class="{{ 'ok' if gate.passed else 'bad' }}">{{ '✓' if gate.passed else '✕' }} <b>{{ gate.gate }}</b> {{ gate.reason }}</li>
+  {% else %}
+    <li class="muted">No gate receipt recorded.</li>
+  {% endfor %}
+  </ul>
+  {% for key, value in receipt.items() if key not in ('gates', 'enrichment') and value %}
+  <p class="muted"><b>{{ key | replace('_', ' ') }}:</b> {{ value if value is string else value | tojson }}</p>
+  {% endfor %}
+  {% set enrichment = receipt.get('enrichment') %}
+  {% if enrichment and enrichment.text %}<p class="muted">Unverified model notes ({{ enrichment.model }}): {{ enrichment.text }}</p>{% endif %}
+  <p class="muted">Sources: {% for id in lead.source_ids %}<a href="/vault?q={{ id }}">{{ id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% if lead.slug %}
+  <a class="run" href="/?article={{ lead.slug }}">Open on Desk</a>
+  {% else %}
+  <button class="run" type="button" hx-post="/leads/{{ lead.record_id }}/draft" hx-disabled-elt="this" hx-indicator="this">Promote to Desk</button>
+  <span class="muted">Drafts with Claude, then opens the 3-pane desk.</span>
+  {% endif %}
+</div>

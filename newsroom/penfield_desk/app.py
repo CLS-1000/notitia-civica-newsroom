@@ -53,11 +53,14 @@ from newsroom.harlan_eternity.signoff import (
     record_correction,
     sign_and_promote_article,
 )
+from newsroom.penfield_desk import cockpit
 from newsroom.penfield_desk.claude_drafter import (
     ClaudeDrafter,
     DraftError,
     DraftSource,
 )
+from newsroom.penfield_desk.deploy import DeployConfig, Deployer
+from newsroom.penfield_desk.fleet import Fleet
 from newsroom.penfield_desk.reply_log import ReplyLogError, add_reply, update_reply
 
 HOST: Final = "127.0.0.1"
@@ -84,6 +87,8 @@ EDITABLE_STATUSES: Final = (
 )
 
 _HERE: Final = Path(__file__).parent
+REPO_ROOT: Final = _HERE.parents[1]
+DEFAULT_RUN_LOG: Final = REPO_ROOT / "data" / "fleet_runs.jsonl"
 _SENTENCE: Final = re.compile(r"\S.*?(?:[.!?](?=\s|$)|$)", re.DOTALL)
 _TAG_SPLIT: Final = re.compile(r"(\[S-\d+\])")
 _QUOTED: Final = re.compile(r'"([^"]+)"')
@@ -187,6 +192,29 @@ def _preview_paragraphs(
     return results
 
 
+_STEELMAN: Final = re.compile(
+    r"^\s*(?:\*\*steelman:\*\*|\*\*steelman\*\*:|steelman:)\s*", re.IGNORECASE
+)
+
+
+def steelman_paragraphs(body: str) -> list[str]:
+    """Paragraphs the editor marked as the strongest opposing case."""
+    return [
+        _STEELMAN.sub("", paragraph, count=1).strip()
+        for paragraph in split_paragraphs(body)
+        if _STEELMAN.match(paragraph)
+    ]
+
+
+def verified_claims(article: dict[str, Any]) -> list[str]:
+    claims = article.get("verified_claims") or []
+    return [
+        str(item.get("claim", "")) if isinstance(item, dict) else str(item)
+        for item in claims
+        if item
+    ]
+
+
 def roles_from_form(form: dict[str, Any]) -> dict[str, str]:
     prefix = "role__"
     return {
@@ -241,6 +269,10 @@ def _slug_for(headline: str, record_id: str) -> str:
 def create_app(
     dsn: str | None = None,
     drafter_factory: DrafterFactory = ClaudeDrafter,
+    *,
+    fleet: Fleet | None = None,
+    deployer: Deployer | None = None,
+    archive_root: Path | None = None,
 ) -> FastAPI:
     database = dsn or os.environ.get("DATABASE_URL", DEFAULT_DSN)
     app = FastAPI(
@@ -251,6 +283,14 @@ def create_app(
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
     app.mount("/static", StaticFiles(directory=_HERE / "static"), name="static")
     templates = Jinja2Templates(directory=_HERE / "templates")
+    cockpit.register(
+        app,
+        templates,
+        fleet=fleet or Fleet(database, DEFAULT_RUN_LOG),
+        deployer=deployer or Deployer(DeployConfig(dsn=database)),
+        archive_root=archive_root
+        or Path(os.environ.get("NOTITIA_ARCHIVE_ROOT", REPO_ROOT)),
+    )
 
     def fetch_article(conn: psycopg.Connection[Any], slug: str) -> dict[str, Any]:
         with conn.cursor(row_factory=dict_row) as cursor:
@@ -334,6 +374,9 @@ def create_app(
         editable = article["status"] in EDITABLE_STATUSES
         return {
             "article": article,
+            "verified": verified_claims(article),
+            "uncertain": disclosures_from_form(form, article),
+            "steelman": steelman_paragraphs(body),
             "gates": gates,
             "gates_passed": all(gate.passed for gate in gates),
             "unticked": len(unticked),
@@ -427,6 +470,8 @@ def create_app(
             "correction_types": CORRECTION_TYPES,
             "article": None,
             "sources": [],
+            "tab": "desk",
+            "status": cockpit.status_badge(request.app.state.dsn),
         }
         if article is not None:
             row = fetch_article(conn, article)
