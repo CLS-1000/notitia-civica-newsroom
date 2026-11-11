@@ -974,7 +974,9 @@ def test_each_adapter_writes_a_public_question(
         assert reason.endswith("."), name
     assert rows["ubik_oregon"][0].startswith("What would Oregon ")
     assert rows["seldon_civic"][0].startswith("What does ")
-    assert "change in federal law?" in rows["seldon_civic"][0]
+    assert rows["seldon_civic"][0] == (
+        "What does H.R. 1234 change in federal law or regulation?"
+    )
 
 
 def test_adapter_uses_a_question_stated_in_the_raw_record(tmp_path: Path) -> None:

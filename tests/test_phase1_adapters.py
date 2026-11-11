@@ -37,7 +37,7 @@ from spec1_bridge.adapters.delos_econ import (
     normalize_generic,
     transit_divergence,
 )
-from spec1_bridge.adapters.seldon_civic import SeldonCivicAdapter, congress_for
+from spec1_bridge.adapters.seldon_civic import FR_API, SeldonCivicAdapter, congress_for
 from spec1_bridge.adapters.ubik_oregon import (
     ODATA_BASE,
     UbikOregonAdapter,
@@ -290,6 +290,10 @@ def congress_router(
             f"{CONGRESS_API}/house-vote/119/2": {
                 "houseRollCallVotes": votes if votes is not None else []
             },
+            # No CBO estimate and no rules, so these tests score bills as before.
+            # tests/test_seldon_civic.py covers both.
+            f"{CONGRESS_API}/bill/119/hr/1234?": {"bill": {"number": "1234"}},
+            FR_API: {"count": 0, "results": []},
             f"{CONGRESS_API}/bill/119/hr/1234/text": (
                 versions
                 if versions is not None
@@ -964,9 +968,13 @@ def test_seldon_requires_an_api_key(
 
 def test_seldon_sends_key_as_header_never_in_url(tmp_path: Path) -> None:
     router = congress_router()
-    seldon(tmp_path, router).poll_sources()
+    seldon(tmp_path, router).harvest(counter())
 
-    assert all(item.headers["x-api-key"] == API_KEY for item in router.requests)
+    congress = [item for item in router.requests if item.url.host == "api.congress.gov"]
+    others = [item for item in router.requests if item.url.host != "api.congress.gov"]
+    assert congress and others
+    assert all(item.headers["x-api-key"] == API_KEY for item in congress)
+    assert not any("x-api-key" in item.headers for item in others)
     assert not any(API_KEY in str(item.url) for item in router.requests)
 
 

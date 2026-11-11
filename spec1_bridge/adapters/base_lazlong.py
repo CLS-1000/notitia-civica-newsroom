@@ -318,6 +318,14 @@ class LazLongAdapter(ABC):
         """Return credentials for this source. They are never spooled."""
         return {}
 
+    def headers_for(self, url: str) -> dict[str, str]:
+        """Return the credentials to send with a request to url.
+
+        They are added per request rather than to the session, so an adapter that
+        polls more than one host can keep each host's credentials to that host.
+        """
+        return self.auth_headers()
+
     # --- Lead definition ----------------------------------------------------
 
     @abstractmethod
@@ -381,7 +389,7 @@ class LazLongAdapter(ABC):
             yield
             return
         self._client = httpx.Client(
-            headers={"User-Agent": USER_AGENT, **self.auth_headers()},
+            headers={"User-Agent": USER_AGENT},
             timeout=self._timeout,
             follow_redirects=True,
             transport=self._transport,
@@ -402,7 +410,9 @@ class LazLongAdapter(ABC):
             try:
                 # httpx treats an empty dict as "clear the query", which would
                 # strip the cursor from a pagination link.
-                response = self._http().get(url, params=params or None)
+                response = self._http().get(
+                    url, params=params or None, headers=self.headers_for(url)
+                )
             except httpx.TransportError as error:
                 failure = f"{type(error).__name__}: {error}"
                 continue
