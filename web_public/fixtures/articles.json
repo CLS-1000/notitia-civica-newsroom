@@ -69,7 +69,29 @@
       }
     ],
     "status": "published",
-    "retraction": null
+    "retraction": null,
+    "replies": [
+      {
+        "subject_name": "SAMPLE Water District",
+        "subject_type": "institution",
+        "contact_method": "email",
+        "requested_at": "2026-09-28T16:00:00+00:00",
+        "deadline_at": "2026-09-30T16:00:00+00:00",
+        "response_status": "responded",
+        "response_summary": "a spokesperson said the district disputes the audit's site count.",
+        "statement": "We contacted SAMPLE Water District on September 28, 2026 with specific findings; a spokesperson said the district disputes the audit's site count."
+      },
+      {
+        "subject_name": "SAMPLE Contractor LLC",
+        "subject_type": "institution",
+        "contact_method": "formal_letter",
+        "requested_at": "2026-09-28T16:00:00+00:00",
+        "deadline_at": "2026-09-30T16:00:00+00:00",
+        "response_status": "no_response_by_deadline",
+        "response_summary": null,
+        "statement": "We contacted SAMPLE Contractor LLC on September 28, 2026 with specific findings; they did not respond by the publication deadline."
+      }
+    ]
   },
   {
     "slug": "sample-fact-brief",
@@ -104,7 +126,8 @@
       }
     ],
     "status": "published",
-    "retraction": null
+    "retraction": null,
+    "replies": []
   },
   {
     "slug": "sample-retracted-brief",
@@ -142,6 +165,7 @@
     "retraction": {
       "reason": "Sample retraction: the fictional record cited was superseded, so the claim does not stand.",
       "retracted_at": "2026-09-25T16:00:00+00:00"
-    }
+    },
+    "replies": []
   }
 ]

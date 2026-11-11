@@ -1,0 +1,29 @@
+<div id="corrections" class="corrections">
+  <h2>Corrections</h2>
+  <p class="muted">Corrections are permanent and public. The signed text and its proof hash are never changed.</p>
+  {% if corrections %}
+  <ol>
+    {% for item in corrections %}
+    <li data-correction-type="{{ item.correction_type }}">
+      <strong>{{ item.correction_type | replace("_", " ") }}</strong>, {{ item.corrected_at.strftime("%Y-%m-%d %H:%M UTC") }}, {{ item.editor_signature }}
+      <p>{{ item.explanation }}</p>
+      {% if item.original_text %}<p><del>{{ item.original_text }}</del></p>{% endif %}
+      {% if item.corrected_text %}<p><ins>{{ item.corrected_text }}</ins></p>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+  {% if correction_issues %}<p class="refused" role="alert">Correction refused.{% for issue in correction_issues %} {{ issue }}{% endfor %}</p>{% endif %}
+  <form hx-post="/articles/{{ article.slug }}/corrections" hx-target="#corrections" hx-swap="outerHTML">
+    <label>Type
+      <select name="correction_type">
+        {% for kind in correction_types %}<option value="{{ kind }}">{{ kind | replace("_", " ") }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Original text (quoted exactly from the article)<textarea name="original_text"></textarea></label>
+    <label>Corrected text<textarea name="corrected_text"></textarea></label>
+    <label>Explanation<textarea name="explanation" required></textarea></label>
+    <label>Editor signature <input type="text" name="editor_signature" autocomplete="name" required></label>
+    <button type="submit">Record correction</button>
+  </form>
+</div>

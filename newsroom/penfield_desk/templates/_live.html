@@ -1,9 +1,10 @@
 <div id="live">
   <h2>dors_venabili Gates</h2>
   {% for gate in gates %}
-  <div class="gate{% if gate.passed %} ok{% endif %}" data-gate="{{ gate.name }}">
+  <div class="gate{% if gate.passed %} ok{% endif %}{% if gate.warnings %} warned{% endif %}" data-gate="{{ gate.name }}">
     <span class="gate-name">{{ gate.label }}</span>
     {% if gate.issues %}<ul>{% for issue in gate.issues %}<li>{{ issue }}</li>{% endfor %}</ul>{% endif %}
+    {% if gate.warnings %}<ul class="warnings" role="status">{% for warning in gate.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>{% endif %}
   </div>
   {% endfor %}
   {% if refused %}<p class="refused" role="alert">Publication refused.{% for issue in sign_issues %} {{ issue }}{% endfor %}</p>{% endif %}

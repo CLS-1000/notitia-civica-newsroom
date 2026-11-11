@@ -29,3 +29,29 @@ class Spec1LeadPacket:
     verbatim_excerpts: Dict[str, str]  # {source_id: text_span}  # noqa: UP006
     paste_ready_prompt: str
     analysis_tier: str = "rule_based"
+    # Five-Mask Standards: the question a story would answer for the public, and
+    # why the public has a stake in it. Producers fill both, using what the raw
+    # record says when it says anything, through public_interest().
+    public_question: str = ""
+    public_interest_reason: str = ""
+
+
+def _clean(value: object) -> str:
+    return " ".join(value.split()) if isinstance(value, str) else ""
+
+
+def public_interest(
+    raw_question: object,
+    raw_reason: object,
+    default_question: str,
+    default_reason: str,
+) -> tuple[str, str]:
+    """Return (question, reason), preferring non-blank text from the raw record.
+
+    Each value falls back to its default on its own, so a record that states
+    only a question still gets the default reason.
+    """
+    return (
+        _clean(raw_question) or _clean(default_question),
+        _clean(raw_reason) or _clean(default_reason),
+    )

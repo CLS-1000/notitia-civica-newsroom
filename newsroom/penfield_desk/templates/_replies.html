@@ -1,0 +1,55 @@
+<div id="replies" class="replies">
+  <h2>Right of Reply Log</h2>
+  <p class="muted">Every subject named under "Subjects of allegations" needs a request here. Times are UTC. The log freezes at publication.</p>
+  {% if replies %}
+  <table>
+    <thead><tr><th scope="col">Subject</th><th scope="col">Contact</th><th scope="col">Requested</th><th scope="col">Deadline</th><th scope="col">Response</th></tr></thead>
+    <tbody>
+      {% for reply in replies %}
+      <tr data-reply-status="{{ reply.response_status }}">
+        <td>{{ reply.subject_name }}<br><span class="muted">{{ reply.subject_type }}</span></td>
+        <td>{{ reply.contact_method | replace("_", " ") }}</td>
+        <td>{{ reply.requested_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ reply.deadline_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>
+          {% if reply_log_open and reply.response_status == "pending" %}
+          <form class="reply-update" hx-post="/articles/{{ article.slug }}/replies/{{ reply.reply_id }}" hx-target="#replies" hx-swap="outerHTML"
+                hx-on::after-request="htmx.trigger('#draft-form', 'change')">
+            <select name="response_status" aria-label="Response from {{ reply.subject_name }}">
+              {% for status in reply_statuses %}<option value="{{ status }}"{% if status == reply.response_status %} selected{% endif %}>{{ status | replace("_", " ") }}</option>{% endfor %}
+            </select>
+            <textarea name="response_summary" aria-label="Summary of the response from {{ reply.subject_name }}">{{ reply.response_summary or "" }}</textarea>
+            <button type="submit" class="secondary">Update</button>
+          </form>
+          {% else %}
+          {{ reply.response_status | replace("_", " ") }}{% if reply.response_summary %}: {{ reply.response_summary }}{% endif %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No reply requests logged.</p>
+  {% endif %}
+  {% if reply_issues %}<p class="refused" role="alert">Reply record refused.{% for issue in reply_issues %} {{ issue }}{% endfor %}</p>{% endif %}
+  {% if reply_log_open %}
+  <form class="reply-add" hx-post="/articles/{{ article.slug }}/replies" hx-target="#replies" hx-swap="outerHTML"
+        hx-on::after-request="htmx.trigger('#draft-form', 'change')">
+    <label>Subject name <input type="text" name="subject_name" required></label>
+    <label>Subject type
+      <select name="subject_type">{% for kind in reply_subject_types %}<option value="{{ kind }}">{{ kind }}</option>{% endfor %}</select>
+    </label>
+    <label>Contact method
+      <select name="contact_method">{% for kind in reply_contact_methods %}<option value="{{ kind }}">{{ kind | replace("_", " ") }}</option>{% endfor %}</select>
+    </label>
+    <label>Requested (UTC) <input type="datetime-local" name="requested_at" required></label>
+    <label>Deadline (UTC) <input type="datetime-local" name="deadline_at" required></label>
+    <label>Response
+      <select name="response_status">{% for status in reply_statuses %}<option value="{{ status }}"{% if status == "pending" %} selected{% endif %}>{{ status | replace("_", " ") }}</option>{% endfor %}</select>
+    </label>
+    <label>Response summary (readers see: "We contacted [subject] on [date] with specific findings; [summary]")<textarea name="response_summary"></textarea></label>
+    <button type="submit">Log right of reply</button>
+  </form>
+  {% endif %}
+</div>

@@ -54,6 +54,21 @@ h1, h2 {
 .score { color: var(--pf-warn); font-family: var(--pf-font-mono); }
 .muted { color: var(--pf-text-muted); }
 
+.public-interest {
+  margin: 0 0 var(--pf-space-2);
+  padding: var(--pf-space-2);
+  border-left: 3px solid var(--pf-accent);
+  background: var(--pf-bg-input);
+}
+.public-interest dt {
+  color: var(--pf-text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.public-interest dd { margin: 0 0 var(--pf-space-2); font-size: 14px; font-weight: 600; }
+.public-interest dd:last-child { margin-bottom: 0; }
+
 .source { margin-bottom: var(--pf-space-4); }
 .source header { font-family: var(--pf-font-mono); font-size: 12px; }
 
@@ -96,6 +111,33 @@ textarea {
   font-size: 13px;
 }
 
+textarea.disclosures,
+.corrections textarea {
+  flex: none;
+  min-height: 56px;
+  resize: vertical;
+}
+
+.corrections form, .reply-add, .reply-update { display: grid; gap: var(--pf-space-2); }
+.replies textarea { flex: none; min-height: 48px; resize: vertical; }
+.replies table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.replies th, .replies td {
+  padding: var(--pf-space-1);
+  border-bottom: 1px solid var(--pf-border);
+  text-align: left;
+  vertical-align: top;
+}
+.replies input[type="datetime-local"] {
+  width: 100%;
+  padding: var(--pf-space-2);
+  border: 1px solid var(--pf-border);
+  border-radius: var(--pf-radius);
+  background: var(--pf-bg-input);
+  color: var(--pf-text);
+  font: inherit;
+}
+.corrections del { color: var(--pf-fail); }
+
 .preview {
   flex: 1 1 40%;
   min-height: 0;
@@ -130,6 +172,8 @@ textarea {
 .gate-name::before { content: "\2715  "; color: var(--pf-fail); }
 .gate.ok .gate-name::before { content: "\2713  "; color: var(--pf-pass); }
 .gate ul { margin: var(--pf-space-1) 0 0; padding-left: var(--pf-space-4); color: var(--pf-fail); font-size: 12px; }
+.gate.ok.warned .gate-name::before { content: "!  "; color: var(--pf-warn); }
+.gate ul.warnings { color: var(--pf-warn); }
 
 .signoff label { padding: var(--pf-space-1) 0; color: var(--pf-text); font-size: 13px; }
 

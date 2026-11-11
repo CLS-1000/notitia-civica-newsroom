@@ -1,5 +1,5 @@
 ---
-import { articleUrl, formatDateTime } from "../lib/data";
+import { articleUrl, correctionLabel, formatDateTime } from "../lib/data";
 import type { Correction } from "../lib/data";
 
 interface Props {
@@ -12,11 +12,16 @@ const { correction } = Astro.props;
 <article class="corrections-diff">
   <h2><a href={articleUrl(correction.slug)}>{correction.headline}</a></h2>
   <p class="meta">
+    <strong>{correctionLabel(correction)}</strong>,{" "}
     <time datetime={correction.corrected_at}
       >{formatDateTime(correction.corrected_at)} UTC</time
     >
   </p>
   <p>{correction.reason}</p>
-  <p class="diff-line"><strong>Before:</strong> <del>{correction.before}</del></p>
-  <p class="diff-line"><strong>After:</strong> <ins>{correction.after}</ins></p>
+  {correction.before && (
+    <p class="diff-line"><strong>Before:</strong> <del>{correction.before}</del></p>
+  )}
+  {correction.after && (
+    <p class="diff-line"><strong>After:</strong> <ins>{correction.after}</ins></p>
+  )}
 </article>

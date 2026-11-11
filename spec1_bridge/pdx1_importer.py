@@ -78,7 +78,7 @@ from spec1_bridge.adapters.base_lazlong import (
     read_artifact_text,
     render_prompt,
 )
-from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
+from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket, public_interest
 from spec1_bridge.page_content import (
     PageContent,
     hollow_page_reason,
@@ -203,6 +203,8 @@ class Pdx1Record:
     published_at: datetime
     origin: str | None = None
     evidence_url: str | None = None
+    public_question: str = ""
+    public_interest_reason: str = ""
 
     @property
     def source_url(self) -> str | None:
@@ -518,6 +520,8 @@ def parse_record(line: str) -> Pdx1Record:
         published_at=published_at,
         origin=raw.get("origin") if isinstance(raw.get("origin"), str) else None,
         evidence_url=_optional_text(raw, "evidence_url") or None,
+        public_question=_optional_text(raw, "public_question"),
+        public_interest_reason=_optional_text(raw, "public_interest_reason"),
     )
 
 
@@ -576,6 +580,24 @@ def pick_excerpt(record: Pdx1Record, text: str, page: PageContent | None = None)
         return ""
     excerpt = _clip(candidates[0])
     return excerpt if excerpt_is_verbatim(excerpt, text) else ""
+
+
+_STATE_FOR_DOMAIN: Final = {SUBJECT_DOMAIN: "Oregon", WASHINGTON_DOMAIN: "Washington"}
+
+
+def public_interest_for(record: Pdx1Record) -> tuple[str, str]:
+    """Return the record's own question and reason, else neutral defaults."""
+    kind = record.source_type.replace("_", " ") or "civic"
+    seats = f" about {', '.join(record.entity_ids)}" if record.entity_ids else ""
+    state = _STATE_FOR_DOMAIN.get(subject_domain_for(record), "local")
+    return public_interest(
+        record.public_question,
+        record.public_interest_reason,
+        f"What does {kind} record {record.record_id} show{seats}, and does the "
+        "sealed source support it?",
+        f"It is a public record of how {state} officials and public bodies act on "
+        "residents' behalf.",
+    )
 
 
 def build_prompt(record: Pdx1Record, artifact: SourceArtifact) -> str:
@@ -741,6 +763,7 @@ def import_pdx1_signals(
                 },
             )
             excerpt = pick_excerpt(record, text, page)
+            question, reason = public_interest_for(record)
             result.packets.append(
                 Spec1LeadPacket(
                     lead_id=lead_id,
@@ -752,6 +775,8 @@ def import_pdx1_signals(
                     verbatim_excerpts={artifact.source_id: excerpt},
                     paste_ready_prompt=build_prompt(record, artifact),
                     analysis_tier="rule_based",
+                    public_question=question,
+                    public_interest_reason=reason,
                 )
             )
 

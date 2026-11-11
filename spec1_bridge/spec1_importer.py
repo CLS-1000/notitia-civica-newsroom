@@ -51,7 +51,7 @@ from spec1_bridge.adapters.base_lazlong import (
     read_artifact_text,
     render_prompt,
 )
-from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
+from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket, public_interest
 from spec1_bridge.pdx1_importer import classify_source_tier as classify_civic_tier
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,8 @@ class Spec1Record:
     hypothesis: str
     llm_reasoning: str
     written_at: datetime
+    public_question: str = ""
+    public_interest_reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +157,8 @@ def parse_record(line: str) -> Spec1Record:
         hypothesis=_text(raw, "hypothesis"),
         llm_reasoning=_text(raw, "llm_reasoning"),
         written_at=written_at,
+        public_question=_text(raw, "public_question"),
+        public_interest_reason=_text(raw, "public_interest_reason"),
     )
 
 
@@ -228,6 +232,22 @@ def pick_excerpt(record: Spec1Record, text: str) -> str:
     if record.signal_excerpt and excerpt_is_verbatim(record.signal_excerpt, text):
         return record.signal_excerpt
     return normalize_whitespace(text)[:EXCERPT_CHARS].strip()
+
+
+def public_interest_for(record: Spec1Record) -> tuple[str, str]:
+    """Return the record's own question and reason, else neutral defaults.
+
+    spec-1's hypothesis is unverified, so the default asks whether the source
+    supports it rather than repeating it as a claim.
+    """
+    source = record.signal_source or "this signal"
+    return public_interest(
+        record.public_question,
+        record.public_interest_reason,
+        f"Does the sealed source from {source} support what spec-1 flagged?",
+        "If the lead holds up, the public needs it reported accurately; if it "
+        "does not, it should not spread unchecked.",
+    )
 
 
 def build_prompt(
@@ -344,6 +364,7 @@ def import_spec1_records(
                 },
             )
             excerpt = pick_excerpt(record, text)
+            question, reason = public_interest_for(record)
             result.packets.append(
                 Spec1LeadPacket(
                     lead_id=lead_id,
@@ -355,6 +376,8 @@ def import_spec1_records(
                     verbatim_excerpts={artifact.source_id: excerpt},
                     paste_ready_prompt=build_prompt(record, artifact, verdict),
                     analysis_tier="rule_based",
+                    public_question=question,
+                    public_interest_reason=reason,
                 )
             )
 

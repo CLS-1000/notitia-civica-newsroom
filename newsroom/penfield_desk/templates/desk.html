@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <title>Penfield Desk</title>
   <link rel="icon" href="data:,">
+  <!-- 422 carries the refusal reasons for sign-off, corrections and the reply log,
+       so swap it in like a success. htmx 2 drops every 4xx by default. -->
+  <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/desk.css">
   <script src="/static/htmx.min.js" defer></script>
@@ -33,6 +36,14 @@
     <div class="receipt">
       <h2>Why this was flagged</h2>
       {% if lead %}
+      {% set question = lead.public_question or article.public_question %}
+      {% set reason = lead.public_interest_reason or article.public_interest_reason %}
+      <dl class="public-interest">
+        <dt>Core Question</dt>
+        <dd data-field="public_question">{% if question %}{{ question }}{% else %}<span class="muted">Not stated by the lead. Write it before drafting further.</span>{% endif %}</dd>
+        <dt>Public Interest Reason</dt>
+        <dd data-field="public_interest_reason">{% if reason %}{{ reason }}{% else %}<span class="muted">Not stated by the lead.</span>{% endif %}</dd>
+      </dl>
       <p>Anomaly score <span class="score">{{ '%.1f' % lead.anomaly_score }}</span></p>
       {% for gate in lead.decomposition_receipt.get('gates', []) %}
       <div class="muted">{{ '✓' if gate.passed else '✕' }} {{ gate.gate }} {{ gate.reason }}</div>
@@ -93,7 +104,12 @@
         {% endfor %}
       </div>
       <label><input type="checkbox" name="is_private_person"{% if article.is_private_person %} checked{% endif %}> Story concerns a private person</label>
-      <label><input type="checkbox" name="right_of_reply_logged"{% if article.right_of_reply_logged %} checked{% endif %}> Right of reply logged</label>
+      <label>Uncertainty disclosures (one per line: what is unknown or unverified)
+        <textarea name="uncertainty_disclosures" class="disclosures">{{ article.uncertainty_disclosures | join("\n") }}</textarea>
+      </label>
+      <label>Subjects of allegations (one per line: each needs a logged right of reply)
+        <textarea name="allegation_subjects" class="disclosures">{{ article.allegation_subjects | join("\n") }}</textarea>
+      </label>
       <button type="button" class="secondary" hx-post="/articles/{{ article.slug }}/save" hx-include="#draft-form" hx-swap="none">Save draft</button>
     </form>
   </section>
@@ -105,14 +121,12 @@
       {% for name, label in required_checks.items() %}
       <label><input type="checkbox" form="draft-form" name="check__{{ name }}"> {{ label }}</label>
       {% endfor %}
+      <label><input type="checkbox" form="draft-form" name="no_allegations_attested"{% if article.no_allegations_attested %} checked{% endif %}> This piece contains no adverse findings or allegations against any named individual or institution.</label>
+      <label><input type="checkbox" form="draft-form" name="no_open_questions_confirmed"{% if article.no_open_questions_confirmed %} checked{% endif %}> I confirm this draft has no open questions or unverified points</label>
       <label>Editor name <input type="text" form="draft-form" name="editor_name" autocomplete="name"></label>
     </div>
-    {% if article.uncertainty_disclosures %}
-    <div>
-      <h2>Uncertainty Disclosures</h2>
-      <ul>{% for item in article.uncertainty_disclosures %}<li>{{ item }}</li>{% endfor %}</ul>
-    </div>
-    {% endif %}
+    {% include "_replies.html" %}
+    {% if article.status == "published" %}{% include "_corrections.html" %}{% endif %}
   </section>
   {% else %}
   <section class="pane"><h1>Draft</h1><p class="muted">Select a lead to begin.</p></section>

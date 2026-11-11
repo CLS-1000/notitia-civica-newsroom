@@ -1,0 +1,15 @@
+---
+import type { Reply } from "../lib/data";
+
+interface Props {
+  replies: Reply[];
+}
+
+// Five-Mask Standards: everyone an allegation names was given a chance to answer.
+const { replies } = Astro.props;
+---
+
+<section class="right-of-reply" aria-labelledby="right-of-reply-heading">
+  <h2 id="right-of-reply-heading">Right of reply</h2>
+  {replies.map((reply) => <p>{reply.statement}</p>)}
+</section>

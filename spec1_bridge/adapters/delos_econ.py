@@ -323,6 +323,28 @@ class DelosEconAdapter(LazLongAdapter):
             "portwatch_transits" in kinds
         )
 
+    def default_public_question(self, record: dict[str, Any]) -> str:
+        if record["kind"] == "chokepoint_drop":
+            return (
+                f"Why did ship transits through {record['port_name']} fall "
+                f"{abs(record['divergence']):.0%}, and what could the drop disrupt?"
+            )
+        return (
+            f"Could patients lose access to {record['generic']} after recall "
+            f"{record['recall_number']}?"
+        )
+
+    def default_public_interest_reason(self, record: dict[str, Any]) -> str:
+        if record["kind"] == "chokepoint_drop":
+            return (
+                "A sustained drop at a shipping chokepoint can delay goods and "
+                "raise prices far from the port."
+            )
+        return (
+            "Patients who depend on a generic drug with one reported supplier can "
+            "lose access when that supplier recalls it."
+        )
+
     def build_paste_ready_prompt(
         self, record: dict[str, Any], artifacts: list[SourceArtifact]
     ) -> str:

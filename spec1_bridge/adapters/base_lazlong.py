@@ -36,7 +36,7 @@ from newsroom.harlan_eternity.custody import (
     decode_verbatim_text,
     fetch_and_seal_source,
 )
-from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
+from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket, public_interest
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +346,24 @@ class LazLongAdapter(ABC):
     ) -> str:
         """Return a prompt an analyst can paste, citing the sealed sources."""
 
+    def default_public_question(self, record: dict[str, Any]) -> str:
+        """Return the question a story on this record would answer for readers."""
+        domain = self.subject_domain.replace("_", " ")
+        return f"What does this {domain} record show, and does the sealed evidence support it?"
+
+    def default_public_interest_reason(self, record: dict[str, Any]) -> str:
+        """Return why the public has a stake in the answer."""
+        return "It concerns a public record that may affect the people it covers."
+
+    def public_interest_for(self, record: dict[str, Any]) -> tuple[str, str]:
+        """Return (question, reason): the record's own, else this adapter's defaults."""
+        return public_interest(
+            record.get("public_question"),
+            record.get("public_interest_reason"),
+            self.default_public_question(record),
+            self.default_public_interest_reason(record),
+        )
+
     def enrich_record(self, raw_record: dict[str, Any]) -> dict[str, Any]:
         """Add facts that need extra requests. May raise PollError."""
         return raw_record
@@ -504,6 +522,7 @@ class LazLongAdapter(ABC):
 
         if not self.verify_evidence_bar(artifacts):
             return None, self.record_key(raw_record)
+        question, reason = self.public_interest_for(raw_record)
         return (
             Spec1LeadPacket(
                 lead_id=self.lead_id_for(raw_record),
@@ -514,6 +533,8 @@ class LazLongAdapter(ABC):
                 source_artifacts=artifacts,
                 verbatim_excerpts=excerpts,
                 paste_ready_prompt=self.build_paste_ready_prompt(raw_record, artifacts),
+                public_question=question,
+                public_interest_reason=reason,
             ),
             "",
         )

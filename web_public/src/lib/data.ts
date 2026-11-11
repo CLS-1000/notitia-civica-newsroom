@@ -36,6 +36,23 @@ export interface Retraction {
   retracted_at: string;
 }
 
+// One logged right-of-reply request. statement is the Five-Mask sentence the
+// exporter writes, so every page words it the same way.
+export interface Reply {
+  subject_name: string;
+  subject_type: "individual" | "institution";
+  contact_method: string;
+  requested_at: string;
+  deadline_at: string;
+  response_status:
+    | "responded"
+    | "no_response_by_deadline"
+    | "declined_to_comment"
+    | "pending";
+  response_summary: string | null;
+  statement: string;
+}
+
 export interface Article {
   slug: string;
   status: "published" | "retracted";
@@ -53,17 +70,35 @@ export interface Article {
   uncertainty_disclosures: string[];
   evidence_bar: number;
   sources: Source[];
+  replies: Reply[];
   steelman?: Steelman;
   quarantine?: Quarantine;
 }
 
+export type CorrectionType = "clarification" | "factual_correction" | "methodology_update";
+
+// Written by scripts/export_verified.py from the append-only article_corrections
+// table. A clarification or methodology update may have no before or after text.
 export interface Correction {
+  correction_id: string;
   slug: string;
   headline: string;
+  correction_type: CorrectionType;
   corrected_at: string;
   reason: string;
-  before: string;
-  after: string;
+  before: string | null;
+  after: string | null;
+  editor_name: string;
+}
+
+const CORRECTION_LABELS: Record<CorrectionType, string> = {
+  clarification: "Clarification",
+  factual_correction: "Correction",
+  methodology_update: "Methodology update",
+};
+
+export function correctionLabel(correction: Correction): string {
+  return CORRECTION_LABELS[correction.correction_type] ?? "Correction";
 }
 
 export interface Measure {
@@ -98,6 +133,10 @@ export const retractedArticles = articles
 export const corrections: Correction[] = load<Correction[]>(
   "corrections.json",
 ).toSorted((a, b) => b.corrected_at.localeCompare(a.corrected_at));
+
+export function correctionsFor(slug: string): Correction[] {
+  return corrections.filter((item) => item.slug === slug);
+}
 
 export function articleUrl(slug: string): string {
   return `/citizens-cognisance/${slug}/`;

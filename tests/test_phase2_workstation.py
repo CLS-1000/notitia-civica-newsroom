@@ -616,14 +616,17 @@ def seed(conn: Conn, **article: Any) -> str:
         "roles": json.dumps(ROLES),
         "private": False,
         "reply": False,
+        "disclosures": json.dumps(["The audit period is not stated."]),
     } | article
     conn.execute(
         """
         INSERT INTO articles
             (slug, section, badge_type, headline, body_markdown, triage_record_id,
-             source_ids, source_roles, is_private_person, right_of_reply_logged)
+             source_ids, source_roles, is_private_person, right_of_reply_logged,
+             uncertainty_disclosures)
         VALUES (%(slug)s, 'ledger', 'analysis', %(headline)s, %(body)s, %(record)s,
-                ARRAY['S-1', 'S-2'], %(roles)s, %(private)s, %(reply)s)
+                ARRAY['S-1', 'S-2'], %(roles)s, %(private)s, %(reply)s,
+                %(disclosures)s)
         """,
         values | {"record": record_id},
     )
@@ -648,6 +651,7 @@ def sign(conn: Conn, **overrides: Any) -> dict[str, Any]:
         "sorted_source_ids": ["S-1", "S-2"],
         "editor_name": "Desk Editor",
         "checks": ALL_CHECKS,
+        "no_allegations_attested": True,
     } | overrides
     return sign_and_promote_article(SLUG, conn=conn, clock=lambda: NOW, **values)
 
@@ -829,6 +833,7 @@ def form(**overrides: Any) -> dict[str, str]:
         "role__S-1": "official",
         "role__S-2": "government_record",
         "editor_name": "Desk Editor",
+        "no_allegations_attested": "on",
         **{f"check__{name}": "on" for name in REQUIRED_CHECKS},
     }
     return {
@@ -967,7 +972,7 @@ def test_validate_enables_button_when_everything_passes(
     seed(db)
     html = desk.post(f"/articles/{SLUG}/validate", data=form()).text
     assert "disabled" not in sign_button(html)
-    assert html.count('class="gate ok"') == 5
+    assert html.count('class="gate ok"') == 8
     assert 'hx-swap-oob="true"' in html
 
 
@@ -1010,7 +1015,45 @@ def test_private_person_allegation_blocks_until_reply_logged(
     assert desk.post(f"/articles/{SLUG}/sign", data=blocked).status_code == 422
 
     allowed = blocked | {"right_of_reply_logged": "on"}
+    # An allegation disables the no-allegations attestation, so the checkbox alone
+    # no longer publishes: the reply request must be in the log.
+    assert desk.post(f"/articles/{SLUG}/sign", data=allowed).status_code == 422
+    request = {
+        "subject_name": "Jane Doe",
+        "subject_type": "individual",
+        "contact_method": "phone",
+        "requested_at": "2026-10-01T09:00",
+        "deadline_at": "2026-10-03T09:00",
+        "response_status": "no_response_by_deadline",
+    }
+    assert desk.post(f"/articles/{SLUG}/replies", data=request).status_code == 200
+    # Still refused while the editor attests there are no allegations.
+    assert desk.post(f"/articles/{SLUG}/sign", data=allowed).status_code == 422
+    del allowed["no_allegations_attested"]
     assert desk.post(f"/articles/{SLUG}/sign", data=allowed).status_code == 200
+
+
+@pytest.mark.parametrize("disclosures", [[], ["", "   "]], ids=["empty", "blank"])
+def test_missing_uncertainty_disclosures_block_sign_off(
+    desk: TestClient, db: Conn, disclosures: list[str]
+) -> None:
+    seed(db, disclosures=json.dumps(disclosures))
+    html = desk.post(f"/articles/{SLUG}/validate", data=form()).text
+    assert "disabled" in sign_button(html)
+    assert 'class="gate" data-gate="uncertainty"' in html
+
+    assert desk.post(f"/articles/{SLUG}/sign", data=form()).status_code == 422
+    assert article_row(db) == ("drafting", "rule_based", False, None)
+
+
+def test_no_open_questions_override_allows_sign_off(desk: TestClient, db: Conn) -> None:
+    seed(db, disclosures="[]")
+    page = desk.get(f"/?article={SLUG}").text
+    assert 'name="no_open_questions_confirmed"' in page
+
+    data = form(no_open_questions_confirmed="on")
+    assert desk.post(f"/articles/{SLUG}/sign", data=data).status_code == 200
+    assert article_row(db)[0] == "published"
 
 
 def test_badge_is_saved_and_applied_at_sign_off(desk: TestClient, db: Conn) -> None:

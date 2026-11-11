@@ -228,6 +228,19 @@ class SeldonCivicAdapter(LazLongAdapter):
             for item in artifacts
         )
 
+    def default_public_question(self, record: dict[str, Any]) -> str:
+        bill = record["bill"]
+        return (
+            f"What does {bill.get('type')} {bill.get('number')} "
+            f"({bill.get('title')}) change in federal law?"
+        )
+
+    def default_public_interest_reason(self, record: dict[str, Any]) -> str:
+        return (
+            "Enrolled federal legislation changes law that applies across the "
+            "country, and the House roll calls show how representatives voted."
+        )
+
     def build_paste_ready_prompt(
         self, record: dict[str, Any], artifacts: list[SourceArtifact]
     ) -> str:
