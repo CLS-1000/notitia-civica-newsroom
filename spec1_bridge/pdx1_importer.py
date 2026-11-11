@@ -71,7 +71,7 @@ from newsroom.harlan_eternity.custody import (
     CustodyError,
     fetch_and_seal_source,
 )
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
     clamp_score,
     excerpt_is_verbatim,
     normalize_whitespace,

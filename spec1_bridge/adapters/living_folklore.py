@@ -41,9 +41,9 @@ from statistics import fmean
 from typing import Any, Final
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollError,
     PollRequest,
     host_of,
@@ -340,7 +340,7 @@ def fatal_disaster(site: str, text: str) -> tuple[str, str] | None:
 # --- Adapter ------------------------------------------------------------------
 
 
-class UbikSpectralAdapter(LazLongAdapter):
+class LivingFolkloreAdapter(BaseAdapter):
     adapter_name = "ubik_spectral"
     subject_domain = "anomalous_lore"
 

@@ -40,9 +40,9 @@ from statistics import fmean, pstdev
 from typing import Any, Final
 from urllib.parse import urlencode
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollRequest,
     clamp_score,
     host_of,
@@ -222,7 +222,7 @@ def _interval(start: datetime, end: datetime) -> str:
     return f"{start:%Y-%m-%dT%H:%M:%SZ}/{end:%Y-%m-%dT%H:%M:%SZ}"
 
 
-class NatureHydroAdapter(LazLongAdapter):
+class NatureHydroAdapter(BaseAdapter):
     adapter_name = "nature_hydro"
     subject_domain = "hydrology"
 

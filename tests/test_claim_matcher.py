@@ -16,6 +16,7 @@ import httpx
 import psycopg
 import pytest
 from conftest import Conn
+from test_federal_civic import PDF_URL, TEXT_URL, rule, text_response
 from test_phase1_adapters import (
     NOW,
     Router,
@@ -25,7 +26,6 @@ from test_phase1_adapters import (
     pdf_response,
     spool_rows,
 )
-from test_seldon_civic import PDF_URL, TEXT_URL, rule, text_response
 
 from spec1_bridge import mycroft_triage
 from spec1_bridge.adapters.claim_matcher import (
@@ -44,10 +44,10 @@ from spec1_bridge.adapters.claim_matcher import (
     query_text,
     shingle_receipt,
 )
-from spec1_bridge.adapters.seldon_civic import (
+from spec1_bridge.adapters.federal_civic import (
     CONGRESS_API_HOST,
     FR_API,
-    SeldonCivicAdapter,
+    FederalCivicAdapter,
 )
 from spec1_bridge.contracts import SourceArtifact
 from spec1_bridge.mycroft_triage import (
@@ -620,7 +620,7 @@ def test_seldon_runs_keyless_on_federal_register_rules(
 ) -> None:
     monkeypatch.delenv("CONGRESS_API_KEY", raising=False)
     mock = fr_router()
-    adapter = SeldonCivicAdapter(**options(tmp_path, mock))
+    adapter = FederalCivicAdapter(**options(tmp_path, mock))
     assert not adapter.polls_congress
 
     [packet] = adapter.harvest(counter()).packets
@@ -637,7 +637,7 @@ def test_keyless_seldon_reaches_the_ledger(
 ) -> None:
     monkeypatch.delenv("CONGRESS_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
-    adapter = SeldonCivicAdapter(**options(tmp_path, fr_router()))
+    adapter = FederalCivicAdapter(**options(tmp_path, fr_router()))
     report = run_adapter(adapter, db, ollama()[0])
     assert report.rejected == [] and len(report.written) == 1
 
@@ -652,12 +652,12 @@ def test_keyless_seldon_leaves_spooled_congress_requests_for_a_keyed_run(
             FR_API: {"count": 0, "results": []},
         }
     )
-    SeldonCivicAdapter("k", **options(tmp_path, outage)).poll_sources()
+    FederalCivicAdapter("k", **options(tmp_path, outage)).poll_sources()
     spooled = [row[1] for row in spool_rows(tmp_path)]
     assert sorted(spooled) == ["bills", "votes"]
 
     keyless_mock = Router({FR_API: {"count": 0, "results": []}})
-    SeldonCivicAdapter(**options(tmp_path, keyless_mock)).poll_sources()
+    FederalCivicAdapter(**options(tmp_path, keyless_mock)).poll_sources()
     assert all(item.url.host != CONGRESS_API_HOST for item in keyless_mock.requests)
     assert sorted(row[1] for row in spool_rows(tmp_path)) == spooled
 

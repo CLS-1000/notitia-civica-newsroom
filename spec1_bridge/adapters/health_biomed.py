@@ -62,9 +62,9 @@ from typing import Any, Final
 from urllib.parse import urlencode
 from xml.etree import ElementTree
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollError,
     PollRequest,
     host_of,
@@ -830,7 +830,7 @@ def fda_approvals(application: Any) -> list[FdaApproval]:
 # --- Adapter ------------------------------------------------------------------
 
 
-class KleinBiomedAdapter(LazLongAdapter):
+class HealthBiomedAdapter(BaseAdapter):
     adapter_name = "klein_biomed"
     subject_domain = "science_health"
 
@@ -1310,7 +1310,7 @@ def _sealed_approval_holds(artifact: SourceArtifact) -> bool:
 
 __all__ = [
     "FdaApproval",
-    "KleinBiomedAdapter",
+    "HealthBiomedAdapter",
     "PubMedRecord",
     "TrialAssessment",
     "TrialMetrics",

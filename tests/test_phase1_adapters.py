@@ -21,30 +21,34 @@ import httpx
 import pytest
 from conftest import Conn
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollRequest,
     RequestSpool,
     excerpt_is_verbatim,
     extract_pdf_text,
 )
-from spec1_bridge.adapters.delos_econ import (
+from spec1_bridge.adapters.federal_civic import (
+    FR_API,
+    FederalCivicAdapter,
+    congress_for,
+)
+from spec1_bridge.adapters.oregon_civic import (
+    ODATA_BASE,
+    OregonCivicAdapter,
+    clauses_diverge,
+    largest_amount,
+    relating_clause_words,
+)
+from spec1_bridge.adapters.supply_chain import (
     ENFORCEMENT_URL,
     NDC_URL,
     PORTWATCH_URL,
     SHORTAGES_URL,
-    DelosEconAdapter,
+    SupplyChainAdapter,
     normalize_generic,
     transit_divergence,
-)
-from spec1_bridge.adapters.seldon_civic import FR_API, SeldonCivicAdapter, congress_for
-from spec1_bridge.adapters.ubik_oregon import (
-    ODATA_BASE,
-    UbikOregonAdapter,
-    clauses_diverge,
-    largest_amount,
-    relating_clause_words,
 )
 from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
 from spec1_bridge.moby_runner import allocate_source_id
@@ -292,7 +296,7 @@ def congress_router(
                 "houseRollCallVotes": votes if votes is not None else []
             },
             # No CBO estimate and no rules, so these tests score bills as before.
-            # tests/test_seldon_civic.py covers both.
+            # tests/test_federal_civic.py covers both.
             f"{CONGRESS_API}/bill/119/hr/1234?": {"bill": {"number": "1234"}},
             FR_API: {"count": 0, "results": []},
             f"{CONGRESS_API}/bill/119/hr/1234/text": (
@@ -356,7 +360,7 @@ def fda_payload(results: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 # Three approved applications: more than a cascade's two, so the recall above
-# stays a plain bottleneck in these tests. tests/test_delos_econ.py covers cascades.
+# stays a plain bottleneck in these tests. tests/test_supply_chain.py covers cascades.
 NDC_THREE_SOURCES = [
     {
         "generic_name": "Sodium Acetate",
@@ -484,7 +488,7 @@ def test_lead_packet_contract_defaults_to_rule_based(tmp_path: Path) -> None:
 # --- Polling, backoff, and spool ----------------------------------------------
 
 
-class ProbeAdapter(LazLongAdapter):
+class ProbeAdapter(BaseAdapter):
     """Smallest concrete adapter, for exercising the base class."""
 
     adapter_name = "probe"
@@ -550,7 +554,7 @@ UNAVAILABLE = httpx.Response(503)
 
 def test_adapter_cannot_be_instantiated_abstract(tmp_path: Path) -> None:
     with pytest.raises(TypeError, match="abstract"):
-        LazLongAdapter(spool_path=tmp_path / "s.db")  # type: ignore[abstract]
+        BaseAdapter(spool_path=tmp_path / "s.db")  # type: ignore[abstract]
 
 
 def test_poll_backs_off_exponentially_then_succeeds(tmp_path: Path) -> None:
@@ -717,8 +721,8 @@ def test_excerpt_rejects_absent_or_blank_text(excerpt: str) -> None:
 # --- Ubik: Oregon -------------------------------------------------------------
 
 
-def ubik(tmp_path: Path, router: Router, **kwargs: Any) -> UbikOregonAdapter:
-    return UbikOregonAdapter("2026R1", **options(tmp_path, router), **kwargs)
+def ubik(tmp_path: Path, router: Router, **kwargs: Any) -> OregonCivicAdapter:
+    return OregonCivicAdapter("2026R1", **options(tmp_path, router), **kwargs)
 
 
 def test_ubik_filters_every_query_to_the_session(tmp_path: Path) -> None:
@@ -963,8 +967,8 @@ def test_ubik_fiscal_download_failure_is_reported(tmp_path: Path) -> None:
 # --- Seldon: Congress ---------------------------------------------------------
 
 
-def seldon(tmp_path: Path, router: Router) -> SeldonCivicAdapter:
-    return SeldonCivicAdapter(API_KEY, **options(tmp_path, router))
+def seldon(tmp_path: Path, router: Router) -> FederalCivicAdapter:
+    return FederalCivicAdapter(API_KEY, **options(tmp_path, router))
 
 
 @pytest.mark.parametrize(
@@ -984,7 +988,7 @@ def test_seldon_without_an_api_key_polls_only_the_federal_register(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("CONGRESS_API_KEY", raising=False)
-    adapter = SeldonCivicAdapter(spool_path=tmp_path / "s.db")
+    adapter = FederalCivicAdapter(spool_path=tmp_path / "s.db")
     assert not adapter.polls_congress
     assert [item.name for item in adapter.poll_requests()] == ["rules"]
     assert adapter.auth_headers() == {}
@@ -1131,8 +1135,8 @@ def test_seldon_scores_roll_call_and_stage(tmp_path: Path) -> None:
 # --- Delos: drugs and chokepoints ---------------------------------------------
 
 
-def delos(tmp_path: Path, router: Router) -> DelosEconAdapter:
-    return DelosEconAdapter(**options(tmp_path, router))
+def delos(tmp_path: Path, router: Router) -> SupplyChainAdapter:
+    return SupplyChainAdapter(**options(tmp_path, router))
 
 
 def test_normalize_generic_strips_dosage_form() -> None:
@@ -1692,7 +1696,7 @@ def test_each_adapter_reaches_the_ledger(
     db: Conn, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    adapters: list[tuple[LazLongAdapter, int]] = [
+    adapters: list[tuple[BaseAdapter, int]] = [
         (ubik(tmp_path, olis_router()), 2),
         (seldon(tmp_path, congress_router()), 1),
         (delos(tmp_path, delos_router()), 2),
@@ -1749,3 +1753,9 @@ def test_new_fiscal_statement_opens_a_new_lead(db: Conn, tmp_path: Path) -> None
 
 def test_sequence_allocates_ledger_compatible_ids(db: Conn) -> None:
     assert allocate_source_id(db).startswith("S-")
+
+
+def test_former_base_class_name_still_imports() -> None:
+    from spec1_bridge.adapters.base_adapter import LazLongAdapter
+
+    assert LazLongAdapter is BaseAdapter

@@ -255,7 +255,7 @@ class RequestSpool:
         return [PollRequest(row[0], row[1], json.loads(row[2])) for row in rows]
 
 
-class LazLongAdapter(ABC):
+class BaseAdapter(ABC):
     """Polls one family of sources and turns its records into leads."""
 
     adapter_name: ClassVar[str]
@@ -595,3 +595,7 @@ class LazLongAdapter(ABC):
                 else:
                     result.packets.append(packet)
         return result
+
+
+# Former name, kept so code written against it still imports.
+LazLongAdapter = BaseAdapter

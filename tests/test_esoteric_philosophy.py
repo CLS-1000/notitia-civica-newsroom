@@ -15,15 +15,15 @@ import pytest
 from conftest import Conn
 from test_phase1_adapters import NOW, Router, counter, ollama, options
 
-from spec1_bridge.adapters.gnosis_mystic import (
+from spec1_bridge.adapters.esoteric_philosophy import (
     COURTLISTENER_SEARCH,
     LINEAGE_SCORE,
     OREGON_REGISTRY,
     PROPUBLICA_ORG,
     PROPUBLICA_SEARCH,
     REVIEW_SCORE,
+    EsotericPhilosophyAdapter,
     Finances,
-    GnosisMysticAdapter,
     Movement,
     Registration,
     finances,
@@ -127,8 +127,8 @@ def adapter(
     mock: Router,
     movements: list[Movement] | None = None,
     token: str | None = TOKEN,
-) -> GnosisMysticAdapter:
-    return GnosisMysticAdapter(
+) -> EsotericPhilosophyAdapter:
+    return EsotericPhilosophyAdapter(
         movements or [MOVEMENT], token, **options(tmp_path, mock)
     )
 

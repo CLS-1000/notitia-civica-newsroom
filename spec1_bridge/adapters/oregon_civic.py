@@ -18,9 +18,9 @@ from datetime import UTC, datetime
 from typing import Any, Final
 from urllib.parse import urljoin
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollRequest,
     clamp_score,
     extract_pdf_text,
@@ -102,7 +102,7 @@ def clauses_diverge(introduced: set[str], current: set[str]) -> bool:
     return overlap <= GUT_AND_STUFF_MAX_OVERLAP
 
 
-class UbikOregonAdapter(LazLongAdapter):
+class OregonCivicAdapter(BaseAdapter):
     adapter_name = "ubik_oregon"
     subject_domain = "oregon_legislature"
 

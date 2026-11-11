@@ -37,8 +37,8 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from newsroom.harlan_eternity.custody import extract_domain
-from spec1_bridge.adapters.base_lazlong import (
-    LazLongAdapter,
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     excerpt_is_verbatim,
     read_artifact_text,
 )
@@ -49,9 +49,9 @@ from spec1_bridge.adapters.claim_matcher import (
     ClaimMatcherAdapter,
     load_narrative_clusters,
 )
-from spec1_bridge.adapters.delos_econ import DelosEconAdapter
-from spec1_bridge.adapters.seldon_civic import SeldonCivicAdapter
-from spec1_bridge.adapters.ubik_oregon import UbikOregonAdapter
+from spec1_bridge.adapters.federal_civic import FederalCivicAdapter
+from spec1_bridge.adapters.oregon_civic import OregonCivicAdapter
+from spec1_bridge.adapters.supply_chain import SupplyChainAdapter
 from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket
 from spec1_bridge.moby_runner import INSERT_SOURCE, Connection, allocate_source_id
 from spec1_bridge.pdx1_importer import SUBJECT_DOMAIN as PDX1_DOMAIN
@@ -414,7 +414,7 @@ def triage_packets(
 
 
 def run_adapter(
-    adapter: LazLongAdapter, conn: Connection, enricher: OllamaEnricher
+    adapter: BaseAdapter, conn: Connection, enricher: OllamaEnricher
 ) -> TriageReport:
     """Harvest one adapter and triage its leads."""
 
@@ -642,14 +642,14 @@ def main(argv: list[str] | None = None) -> int:
         str(CLAIM_CACHE_DEFAULT) if args.factcheck_api_key else None
     )
 
-    adapters: list[LazLongAdapter] = []
+    adapters: list[BaseAdapter] = []
     if not args.proc_track_only:
-        adapters.append(DelosEconAdapter())
+        adapters.append(SupplyChainAdapter())
         if args.session_key:
-            adapters.append(UbikOregonAdapter(args.session_key))
+            adapters.append(OregonCivicAdapter(args.session_key))
         # Seldon polls Federal Register rules without a key, and adds
         # Congress.gov bills when CONGRESS_API_KEY is set.
-        adapters.append(SeldonCivicAdapter())
+        adapters.append(FederalCivicAdapter())
 
     enricher = OllamaEnricher(model=args.ollama_model)
     with psycopg.connect(args.dsn, autocommit=True) as conn:

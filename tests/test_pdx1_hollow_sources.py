@@ -27,7 +27,7 @@ import pytest
 from newsroom.dors_venabili.gatekeeper import verify_grounding
 from newsroom.harlan_eternity.custody import SOURCE_TIERS, fetch_and_seal_source
 from spec1_bridge import mycroft_triage, pdx1_importer
-from spec1_bridge.adapters.base_lazlong import excerpt_is_verbatim, read_artifact_text
+from spec1_bridge.adapters.base_adapter import excerpt_is_verbatim, read_artifact_text
 from spec1_bridge.page_content import (
     error_notice,
     hollow_page_reason,

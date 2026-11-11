@@ -65,11 +65,11 @@ from urllib.parse import quote
 
 import httpx
 
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
     _MAX_BACKOFF_SECONDS,
     _RETRYABLE_STATUS,
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollError,
     PollRequest,
     clamp_score,
@@ -401,7 +401,7 @@ def unsealed_notes(unsealed: Sequence[Docket]) -> list[str]:
 # --- Adapter ------------------------------------------------------------------
 
 
-class MazerDefenseAdapter(LazLongAdapter):
+class DefenseContractsAdapter(BaseAdapter):
     adapter_name = "mazer_defense"
     subject_domain = "security_defense"
 

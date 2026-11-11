@@ -39,7 +39,7 @@ from newsroom.harlan_eternity.custody import (
     DEFAULT_ARCHIVE_DIR,
     validate_source_id,
 )
-from spec1_bridge.adapters.base_lazlong import render_prompt
+from spec1_bridge.adapters.base_adapter import render_prompt
 from spec1_bridge.contracts import SourceArtifact, Spec1LeadPacket, public_interest
 
 logger = logging.getLogger(__name__)

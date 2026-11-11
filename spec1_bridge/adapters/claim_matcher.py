@@ -42,9 +42,9 @@ from pathlib import Path
 from typing import Any, Final, Protocol
 
 from newsroom.harlan_eternity.custody import normalize_domain
-from spec1_bridge.adapters.base_lazlong import (
+from spec1_bridge.adapters.base_adapter import (
+    BaseAdapter,
     EvidenceTarget,
-    LazLongAdapter,
     PollRequest,
     host_of,
     render_prompt,
@@ -599,7 +599,7 @@ def load_narrative_clusters(
 # --- Adapter ------------------------------------------------------------------
 
 
-class ClaimMatcherAdapter(LazLongAdapter):
+class ClaimMatcherAdapter(BaseAdapter):
     adapter_name = "claim_matcher"
     subject_domain = "narrative_integrity"
 
