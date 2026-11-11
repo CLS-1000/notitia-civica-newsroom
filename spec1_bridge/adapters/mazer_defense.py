@@ -29,10 +29,14 @@ Sources:
   blogs, forums, leak sites) are rejected when loaded.
 
 Degrading on refusal: when gao.gov or dodig.mil refuses a docket with HTTP 403,
-the docket is set aside, not sealed, and never cited. A major sole-source award
-is still a lead on its sealed USAspending record alone, and its receipt notes
-"GAO docket unsealed (HTTP 403); lead based on verified USAspending contract
-award." An award that qualifies only through that docket (a protest on a
+the docket is set aside, not sealed, and never cited as evidence. A major
+sole-source award is still a lead on its sealed USAspending record alone, and
+its receipt notes "GAO docket unsealed (HTTP 403); lead based on verified
+USAspending contract award." The reason names a refused GAO docket only as
+unverified: "USAspending dockets confirm a $412.5 million sole-source
+obligation; GAO protest B-423456.2 referenced by editor but unverified due to
+external site restrictions." It never quotes the refused docket's finding or
+outcome. An award that qualifies only through that docket (a protest on a
 competed award) is an error for retry. Any other failure, and any sealed docket
 that does not say what it claims, still fails the lead.
 
@@ -764,6 +768,15 @@ class MazerDefenseAdapter(LazLongAdapter):
             return (
                 f"{first}; GAO bid protest dockets document a sustained protest "
                 f"({decisions})."
+            )
+        refused = [
+            item.number for item in record.get("unsealed", ()) if item.kind == KIND_GAO
+        ]
+        if refused:
+            protests = ", ".join(refused)
+            return (
+                f"{first}; GAO protest {protests} referenced by editor but "
+                "unverified due to external site restrictions."
             )
         return f"{first}; no sustained GAO bid protest has been linked to it."
 

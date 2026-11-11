@@ -687,10 +687,11 @@ def test_gao_refusal_degrades_to_the_sole_source_lead(tmp_path: Path) -> None:
     assert packet.timestamp == datetime(2026, 10, 2, tzinfo=UTC)
     assert packet.public_interest_reason == (
         "USAspending dockets confirm a $412.5 million sole-source obligation; "
-        "no sustained GAO bid protest has been linked to it."
+        "GAO protest B-423456.2 referenced by editor but unverified due to "
+        "external site restrictions."
     )
     text = f"{packet.public_question} {packet.public_interest_reason}"
-    assert "B-423456" not in text and FINDING not in text
+    assert FINDING not in text and "sustained" not in text
     receipt = packet.receipt_details
     assert receipt["evidence_notes"] == [GAO_NOTE]
     assert receipt["unsealed_dockets"] == [
@@ -715,6 +716,9 @@ def test_dodig_refusal_is_noted_the_same_way(tmp_path: Path) -> None:
     [packet] = harvest(tmp_path, router(ig=httpx.Response(403)), [ig_docket()]).packets
     assert packet.receipt_details["evidence_notes"] == [IG_NOTE]
     assert packet.anomaly_score == 60.0
+    assert packet.public_interest_reason.endswith(
+        "no sustained GAO bid protest has been linked to it."
+    )
 
 
 def test_refused_gao_with_sealed_dodig_keeps_the_audit(tmp_path: Path) -> None:
@@ -724,6 +728,9 @@ def test_refused_gao_with_sealed_dodig_keeps_the_audit(tmp_path: Path) -> None:
     assert kinds == {KIND_AWARD, KIND_DODIG}
     assert packet.anomaly_score == 65.0
     assert packet.receipt_details["evidence_notes"] == [GAO_NOTE]
+    assert "GAO protest B-423456.2 referenced by editor but unverified" in (
+        packet.public_interest_reason
+    )
 
 
 def test_refused_protest_on_a_competed_award_is_an_error_for_retry(
