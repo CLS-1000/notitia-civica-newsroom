@@ -1,6 +1,6 @@
 // Loads the JSON that scripts/export_verified.py writes. NC_DATA_DIR points a build
 // at the labelled sample fixtures, and every page then shows a sample-data banner.
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface Source {
@@ -136,6 +136,69 @@ export const corrections: Correction[] = load<Correction[]>(
 
 export function correctionsFor(slug: string): Correction[] {
   return corrections.filter((item) => item.slug === slug);
+}
+
+// Written by newsroom/dors_venabili/bias_audit.py, one file per YYYY-MM period.
+export interface DomainCoverage {
+  domain: string;
+  articles: number;
+  share_pct: number | null;
+  target_pct: number;
+  gap_pct_points: number | null;
+  sigma: number | null;
+  flagged: boolean;
+}
+
+export interface RoleGroup {
+  group: string;
+  roles: string[];
+  citations: number;
+  share_pct: number | null;
+}
+
+export interface BiasAudit {
+  period: string;
+  window: { start: string; end: string };
+  generated_at: string;
+  articles: { total: number; retracted: number };
+  baseline: { reference_source: string; max_allowed_divergence_sigma: number };
+  domain_coverage: DomainCoverage[];
+  unmapped_domains: { value: string; articles: number }[];
+  source_roles: {
+    citations: number;
+    roles: { role: string; citations: number; share_pct: number | null }[];
+    groups: RoleGroup[];
+  };
+  corrections: {
+    factual_corrections: number;
+    clarifications: number;
+    methodology_updates: number;
+    articles_corrected_or_clarified: number;
+    factual_correction_rate_pct: number | null;
+    clarification_rate_pct: number | null;
+  };
+  notes: string[];
+}
+
+const AUDIT_PERIOD = /^\d{4}-\d{2}\.json$/;
+
+function loadAudits(): BiasAudit[] {
+  const dir = join(DATA_DIR, "audits");
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => AUDIT_PERIOD.test(name))
+    .map((name) => load<BiasAudit>(join("audits", name)))
+    .toSorted((a, b) => b.period.localeCompare(a.period));
+}
+
+export const audits: BiasAudit[] = loadAudits();
+
+export function auditUrl(period: string): string {
+  return `/trust/audits/${period}/`;
+}
+
+export function formatPercent(value: number | null): string {
+  return value === null ? "n/a" : `${value.toFixed(1)}%`;
 }
 
 export function articleUrl(slug: string): string {
