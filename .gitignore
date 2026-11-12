@@ -19,3 +19,5 @@ archive/
 web_public/node_modules/
 web_public/dist/
 web_public/.astro/
+.env
+.env.bak
