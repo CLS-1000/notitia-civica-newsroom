@@ -11,10 +11,12 @@ faces the same gates and sign-off.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from typing import Any, Final
 
 import anthropic
+import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from newsroom.dors_venabili.gatekeeper import extract_citations
@@ -137,10 +139,49 @@ class ClaudeDrafter:
             self._client = anthropic.Anthropic()
         return self._client.beta.messages
 
+    def _has_real_anthropic_key(self) -> bool:
+        key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+        return len(key) >= 20 and not key.endswith("...")
+
+    def _draft_via_ollama(self, lead_prompt: str, sources: list[DraftSource]) -> str:
+        url = os.environ.get("OLLAMA_CHAT_URL", "http://localhost:11434/api/chat")
+        model = os.environ.get("OLLAMA_MODEL", "llama3.2:triage")
+        payload = {
+            "model": model,
+            "stream": False,
+            "format": OUTPUT_SCHEMA,
+            "options": {"temperature": 0},
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": build_user_message(lead_prompt, sources)},
+            ],
+        }
+        try:
+            with httpx.Client(timeout=120.0) as client:
+                resp = client.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            text = (data.get("message") or {}).get("content") or data.get("response")
+            if not isinstance(text, str) or not text.strip():
+                raise DraftError("Ollama returned an empty draft response")
+            return text
+        except httpx.HTTPError as error:
+            raise DraftError(f"Ollama draft fallback failed: {error}") from error
+
     def draft(self, lead_prompt: str, sources: list[DraftSource]) -> DraftResult:
         """Return a validated draft, or raise DraftError."""
         if not sources:
             raise DraftError("a draft needs at least one source")
+        if self._client is None and not self._has_real_anthropic_key():
+            text = self._draft_via_ollama(lead_prompt, sources)
+            try:
+                draft = DraftResult.model_validate_json(text)
+            except ValidationError as error:
+                raise DraftError(f"draft did not match the schema: {error}") from error
+            invented = _invented_ids(draft, {source.source_id for source in sources})
+            if invented:
+                raise DraftError(f"draft cited unknown sources: {', '.join(invented)}")
+            return draft
         try:
             response = self._messages().create(
                 model=MODEL,

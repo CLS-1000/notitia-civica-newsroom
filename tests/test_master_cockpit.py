@@ -33,8 +33,8 @@ from newsroom.penfield_desk.fleet import (
 )
 
 NAMED_ENGINES = (
-    "Ubik", "Seldon", "Delos", "Klein", "Mazer", "Valis", "Trantor",
-    "Ubik Spectral", "Eschaton", "Gnosis", "Deckard",
+    "Oregon Civic", "Federal Civic", "Supply Chain", "Health and Biomed", "Defense Contracts", "UAP Telemetry", "Archaeology LiDAR",
+    "Living Folklore", "Prophecy Calendar", "Esoteric Philosophy", "CT Mapper",
 )  # fmt: skip
 TABS = (
     "[FLEET CONTROL]",

@@ -1,1 +1,68 @@
-[]
+[
+  {
+    "badge_type": "FACT BRIEF",
+    "body_markdown": "A Washington Public Disclosure Commission record lists a $300.00 cash contribution received on November 5, 2026, by the Snohomish County Democratic Party (Campaign - Non-Exempt), which the record classifies as a political committee, for the 2026 election year. [S-1000043]\n\nThe record lists the contributor's category as an organization based in Washington, gives the jurisdiction as Various, and includes no description of the contribution. [S-1000043]\n\nThe receipt is filed under report number 110402358 by the committee with filer ID SNOHDCN206. [S-1000043]",
+    "deck": "A Washington Public Disclosure Commission record lists one cash receipt for the 2026 election year.",
+    "editor_name": "Matthew James Lakamp",
+    "editorial_proof_hash": "d13fb0fd3eb273b1137bc985bc5ab6add8dbed2e41decab77abe1d8ea7f800df",
+    "evidence_bar": 100,
+    "headline": "Snohomish County Democratic Party committee reports $300 cash contribution from Washington organization",
+    "published_at": "2026-11-11T18:31:45.891681-08:00",
+    "replies": [],
+    "retraction": null,
+    "section": "washington_civic",
+    "signed_at": "2026-11-12T02:31:45Z",
+    "slug": "snohomish-county-democratic-party-committee-reports-300-cash-c9a2dc65",
+    "sources": [
+      {
+        "archive_url": null,
+        "domain": "data.wa.gov",
+        "raw_sha256": "ff8ce84ffb61a7af9747995f950cb1a97d64154b1eb503eb3bbaa6fbd654cedb",
+        "retrieved_at": "2026-11-05T18:33:30.600790-08:00",
+        "source_id": "S-1000043",
+        "tier": "tier_1_primary",
+        "url": "https://data.wa.gov/resource/kv7h-kjye.json?id=21818535&$select=id,report_number,filer_id,filer_name,type,for_or_against,jurisdiction,jurisdiction_type,election_year,amount,cash_or_in_kind,receipt_date,description,contributor_category,contributor_state"
+      }
+    ],
+    "status": "published",
+    "uncertainty_disclosures": [
+      "The triage lead names the contributor, but the fields selected in the sealed source do not include a contributor name, so this draft does not identify the contributor. Re-fetching the record with the contributor_name field would be needed to verify it.",
+      "The record lists for_or_against as against, and the source does not explain what that field means for a party committee's receipt.",
+      "The anomaly statistics in the triage lead are not in the sealed source, so this draft makes no claim that the contribution is unusual.",
+      "No officials or seats are identified in the sealed source.",
+      "The sealed source supports only a single routine contribution record. It does not on its own support a larger story."
+    ],
+    "verified_claims": [
+      {
+        "claim": "The Snohomish County Democratic Party (Campaign - Non-Exempt) reported receiving a $300.00 cash contribution on November 5, 2026.",
+        "source_ids": [
+          "S-1000043"
+        ]
+      },
+      {
+        "claim": "The record classifies the filer as a political committee and lists election year 2026.",
+        "source_ids": [
+          "S-1000043"
+        ]
+      },
+      {
+        "claim": "The contributor is categorized as an organization located in Washington.",
+        "source_ids": [
+          "S-1000043"
+        ]
+      },
+      {
+        "claim": "The record lists jurisdiction as Various and contains no description of the contribution.",
+        "source_ids": [
+          "S-1000043"
+        ]
+      },
+      {
+        "claim": "The receipt appears in report number 110402358 filed under filer ID SNOHDCN206.",
+        "source_ids": [
+          "S-1000043"
+        ]
+      }
+    ]
+  }
+]

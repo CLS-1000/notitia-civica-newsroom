@@ -193,7 +193,7 @@ def _proc_track(env: Mapping[str, str]) -> Runner:
 ENGINES: Final[tuple[Engine, ...]] = (
     Engine(
         "ubik_oregon",
-        "Ubik",
+        "Oregon Civic",
         "engine",
         "Civic",
         number=1,
@@ -202,7 +202,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
     ),
     Engine(
         "seldon_civic",
-        "Seldon",
+        "Federal Civic",
         "engine",
         "Civic",
         number=2,
@@ -210,7 +210,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
     ),
     Engine(
         "delos_econ",
-        "Delos",
+        "Supply Chain",
         "engine",
         "Economy",
         number=3,
@@ -218,7 +218,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
     ),
     Engine(
         "klein_biomed",
-        "Klein",
+        "Health and Biomed",
         "engine",
         "Health",
         number=4,
@@ -226,7 +226,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
     ),
     Engine(
         "mazer_defense",
-        "Mazer",
+        "Defense Contracts",
         "engine",
         "Defense",
         number=6,
@@ -235,7 +235,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
     ),
     Engine(
         "valis_uap",
-        "Valis",
+        "UAP Telemetry",
         "engine",
         "UAP",
         ledger="telemetry",
@@ -245,7 +245,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
     ),
     Engine(
         "trantor_antiquity",
-        "Trantor",
+        "Archaeology LiDAR",
         "engine",
         "Antiquity",
         number=8,
@@ -253,7 +253,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
     ),
     Engine(
         "ubik_spectral",
-        "Ubik Spectral",
+        "Living Folklore",
         "engine",
         "Folklore",
         number=9,
@@ -262,7 +262,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
     ),
     Engine(
         "eschaton_prophecy",
-        "Eschaton",
+        "Prophecy Calendar",
         "engine",
         "Disinfo",
         ledger="telemetry",
@@ -271,7 +271,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
     ),
     Engine(
         "gnosis_mystic",
-        "Gnosis",
+        "Esoteric Philosophy",
         "engine",
         "Esoteric",
         number=11,
@@ -279,7 +279,7 @@ ENGINES: Final[tuple[Engine, ...]] = (
     ),
     Engine(
         "deckard_ct_mapper",
-        "Deckard",
+        "CT Mapper",
         "engine",
         "Disinfo",
         ledger="telemetry",
