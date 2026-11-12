@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import anthropic
+import httpx
 import httpx2
 import psycopg
 import pytest
@@ -572,6 +573,77 @@ def api_error(kind: type[anthropic.APIStatusError], status: int) -> Exception:
 )
 def test_drafter_contains_api_failures(error: Exception) -> None:
     with pytest.raises(DraftError):
+        drafter(FakeAnthropic(error=error)).draft("lead", SOURCES)
+
+
+def test_drafter_falls_back_to_ollama_when_credit_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from newsroom.penfield_desk import claude_drafter
+
+    anthropic_calls: list[httpx2.Request] = []
+    ollama_calls: list[httpx.Request] = []
+
+    def anthropic_respond(request: httpx2.Request) -> httpx2.Response:
+        anthropic_calls.append(request)
+        return httpx2.Response(
+            400,
+            json={
+                "type": "error",
+                "error": {
+                    "type": "invalid_request_error",
+                    "message": "Your credit balance is too low to access the "
+                    "Anthropic API. Please go to Plans & Billing to upgrade or "
+                    "purchase credits.",
+                },
+            },
+        )
+
+    def ollama_respond(request: httpx.Request) -> httpx.Response:
+        ollama_calls.append(request)
+        return httpx.Response(
+            200, json={"message": {"role": "assistant", "content": json.dumps(DRAFT)}}
+        )
+
+    real_anthropic = anthropic.Anthropic
+    real_httpx_client = httpx.Client
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-" + "x" * 40)
+    monkeypatch.setattr(
+        claude_drafter.anthropic,
+        "Anthropic",
+        lambda: real_anthropic(
+            max_retries=0,
+            http_client=anthropic.DefaultHttpxClient(
+                transport=httpx2.MockTransport(anthropic_respond)
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        claude_drafter.httpx,
+        "Client",
+        lambda **kwargs: real_httpx_client(
+            transport=httpx.MockTransport(ollama_respond), **kwargs
+        ),
+    )
+
+    draft = ClaudeDrafter().draft("Assess this.", SOURCES)
+
+    assert draft.headline == DRAFT["headline"]
+    assert len(anthropic_calls) == 1
+    assert len(ollama_calls) == 1
+    sent = json.loads(ollama_calls[0].content)
+    assert sent["format"] == OUTPUT_SCHEMA
+    assert sent["messages"][0]["content"] == SYSTEM_PROMPT
+
+
+def test_injected_client_does_not_fall_back_on_credit_exhaustion() -> None:
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    error = anthropic.BadRequestError(
+        "Your credit balance is too low to access the Anthropic API.",
+        response=httpx2.Response(400, request=request),
+        body=None,
+    )
+    with pytest.raises(DraftError, match="credit balance"):
         drafter(FakeAnthropic(error=error)).draft("lead", SOURCES)
 
 

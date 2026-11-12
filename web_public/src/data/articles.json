@@ -1,6 +1,58 @@
 [
   {
     "badge_type": "FACT BRIEF",
+    "body_markdown": "U.S. Customs and Border Protection posted an estimated 80-minute wait for standard passenger vehicles alongside a 5-minute wait for standard commercial vehicles at the Brownsville Veterans International port of entry (port 535502) at 6:00 p.m. CST on Nov. 11, 2026 [S-1000082].\n\nAccording to the agency's port feed, one of eight maximum passenger vehicle lanes was open for standard manual processing with an 80-minute delay, two Ready Lanes were open with an 80-minute delay, and two NEXUS/SENTRI lanes were open with a 30-minute delay [S-1000082].\n\nOn the freight side, two of four maximum commercial vehicle lanes were open under RFID processing with a 5-minute wait and no reported delay, while FAST lanes were listed as closed [S-1000082].\n\nStandard pedestrian processing had one of two maximum lanes open with zero minutes of delay, and Ready Lanes for pedestrians were listed as not applicable; the crossing operates from 6 a.m. to midnight and reported open status with no construction notice [S-1000082].",
+    "deck": "A U.S. Customs and Border Protection feed posted a 75-minute gap between passenger and commercial vehicle wait times at the Veterans International crossing in Brownsville on Nov. 11, 2026.",
+    "editor_name": "Matthew James Lakamp",
+    "editorial_proof_hash": "84cc0bd8c08c6cb07608c5a6530a0a9af651676e62b869ac241a900ed450e92d",
+    "evidence_bar": 100,
+    "headline": "Brownsville Border Crossing Sees Estimated Wait Times of Up to 80 Minutes for Passenger Vehicles",
+    "published_at": "2026-11-12T00:02:33.173876-08:00",
+    "replies": [],
+    "retraction": null,
+    "section": "border_crossings",
+    "signed_at": "2026-11-12T08:02:33Z",
+    "slug": "brownsville-border-crossing-sees-estimated-wait-times-of-up-26451c50",
+    "sources": [
+      {
+        "archive_url": null,
+        "domain": "bwt.cbp.gov",
+        "raw_sha256": "800e1097df963adbbe93b2820a7edf697927b8929c16e523048b2bc4a59e932b",
+        "retrieved_at": "2026-11-11T16:06:01.177548-08:00",
+        "source_id": "S-1000082",
+        "tier": "tier_1_primary",
+        "url": "https://bwt.cbp.gov/api/bwtnew/535502"
+      }
+    ],
+    "status": "published",
+    "uncertainty_disclosures": [
+      "U.S. Customs and Border Protection posted wait times are point-in-time estimates; the sealed source does not show whether delays persisted across later updates.",
+      "The port feed lists open lane counts and closed FAST lanes but does not explain staffing levels or why additional passenger lanes were closed.",
+      "The sealed source contains no information on commercial cargo volumes, specific commuter delays, or downstream traffic impacts."
+    ],
+    "verified_claims": [
+      {
+        "claim": "Port 535502 (Brownsville, Veterans International) reported a 5-minute wait for standard commercial lanes (2 of 4 lanes open, RFID) at 6:00 p.m. CST on 11/11/2026.",
+        "source_ids": [
+          "S-1000082"
+        ]
+      },
+      {
+        "claim": "Standard passenger lanes (1 of 8 lanes open, Manual) and passenger Ready Lanes (2 lanes open) each reported an 80-minute delay at 6:00 p.m. CST on 11/11/2026, while NEXUS/SENTRI lanes (2 open) reported a 30-minute delay.",
+        "source_ids": [
+          "S-1000082"
+        ]
+      },
+      {
+        "claim": "Commercial FAST lanes were listed as closed, and standard pedestrian processing (1 of 2 lanes open) reported a 0-minute wait.",
+        "source_ids": [
+          "S-1000082"
+        ]
+      }
+    ]
+  },
+  {
+    "badge_type": "FACT BRIEF",
     "body_markdown": "A Washington Public Disclosure Commission record lists a $300.00 cash contribution received on November 5, 2026, by the Snohomish County Democratic Party (Campaign - Non-Exempt), which the record classifies as a political committee, for the 2026 election year. [S-1000043]\n\nThe record lists the contributor's category as an organization based in Washington, gives the jurisdiction as Various, and includes no description of the contribution. [S-1000043]\n\nThe receipt is filed under report number 110402358 by the committee with filer ID SNOHDCN206. [S-1000043]",
     "deck": "A Washington Public Disclosure Commission record lists one cash receipt for the 2026 election year.",
     "editor_name": "Matthew James Lakamp",

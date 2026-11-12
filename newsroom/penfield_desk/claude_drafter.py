@@ -130,6 +130,10 @@ def _invented_ids(draft: DraftResult, allowed: set[str]) -> list[str]:
     return sorted(cited - allowed)
 
 
+def _is_credit_exhausted(error: anthropic.APIStatusError) -> bool:
+    return "credit balance is too low" in f"{error.message} {error.body}".lower()
+
+
 class ClaudeDrafter:
     def __init__(self, client: anthropic.Anthropic | None = None) -> None:
         self._client = client
@@ -168,20 +172,31 @@ class ClaudeDrafter:
         except httpx.HTTPError as error:
             raise DraftError(f"Ollama draft fallback failed: {error}") from error
 
+    def _parse_and_verify(self, text: str, sources: list[DraftSource]) -> DraftResult:
+        """Validate a draft against the schema and the provided source IDs."""
+        try:
+            draft = DraftResult.model_validate_json(text)
+        except ValidationError as error:
+            raise DraftError(f"draft did not match the schema: {error}") from error
+        invented = _invented_ids(draft, {source.source_id for source in sources})
+        if invented:
+            raise DraftError(f"draft cited unknown sources: {', '.join(invented)}")
+        return draft
+
     def draft(self, lead_prompt: str, sources: list[DraftSource]) -> DraftResult:
-        """Return a validated draft, or raise DraftError."""
+        """Return a validated draft, or raise DraftError.
+
+        With no injected client, a missing key, rejected credentials, or an
+        exhausted credit balance falls back to the local Ollama model. An injected
+        client never falls back, so its failures surface as DraftError.
+        """
         if not sources:
             raise DraftError("a draft needs at least one source")
-        if self._client is None and not self._has_real_anthropic_key():
-            text = self._draft_via_ollama(lead_prompt, sources)
-            try:
-                draft = DraftResult.model_validate_json(text)
-            except ValidationError as error:
-                raise DraftError(f"draft did not match the schema: {error}") from error
-            invented = _invented_ids(draft, {source.source_id for source in sources})
-            if invented:
-                raise DraftError(f"draft cited unknown sources: {', '.join(invented)}")
-            return draft
+        can_fall_back = self._client is None
+        if can_fall_back and not self._has_real_anthropic_key():
+            return self._parse_and_verify(
+                self._draft_via_ollama(lead_prompt, sources), sources
+            )
         try:
             response = self._messages().create(
                 model=MODEL,
@@ -200,10 +215,18 @@ class ClaudeDrafter:
                 ],
             )
         except anthropic.AuthenticationError as error:
+            if can_fall_back:
+                return self._parse_and_verify(
+                    self._draft_via_ollama(lead_prompt, sources), sources
+                )
             raise DraftError("Anthropic credentials were rejected") from error
         except anthropic.RateLimitError as error:
             raise DraftError("Anthropic rate limit reached, try again") from error
         except anthropic.APIStatusError as error:
+            if can_fall_back and _is_credit_exhausted(error):
+                return self._parse_and_verify(
+                    self._draft_via_ollama(lead_prompt, sources), sources
+                )
             raise DraftError(f"Anthropic API error: {error.message}") from error
         except anthropic.APIConnectionError as error:
             raise DraftError("could not reach the Anthropic API") from error
@@ -211,12 +234,4 @@ class ClaudeDrafter:
         if response.stop_reason != "end_turn":
             raise DraftError(f"draft stopped early: {response.stop_reason}")
         text = "".join(block.text for block in response.content if block.type == "text")
-        try:
-            draft = DraftResult.model_validate_json(text)
-        except ValidationError as error:
-            raise DraftError(f"draft did not match the schema: {error}") from error
-
-        invented = _invented_ids(draft, {source.source_id for source in sources})
-        if invented:
-            raise DraftError(f"draft cited unknown sources: {', '.join(invented)}")
-        return draft
+        return self._parse_and_verify(text, sources)
