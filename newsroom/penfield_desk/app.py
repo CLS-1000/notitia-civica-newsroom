@@ -61,13 +61,14 @@ from newsroom.penfield_desk.claude_drafter import (
 )
 from newsroom.penfield_desk.deploy import DeployConfig, Deployer
 from newsroom.penfield_desk.fleet import Fleet
+from newsroom.penfield_desk.manual_drafter import default_drafter
 from newsroom.penfield_desk.reply_log import ReplyLogError, add_reply, update_reply
 
 HOST: Final = "127.0.0.1"
-PORT: Final = 8000
+PORT: Final = int(os.environ.get("PENFIELD_PORT", "8000"))
 ALLOWED_HOSTS: Final = [HOST, "localhost"]
 ALLOWED_ORIGINS: Final = frozenset(
-    {f"http://{HOST}:{PORT}", f"http://localhost:{PORT}"}
+    {f"http://{HOST}:8000", "http://localhost:8000", f"http://{HOST}:8001", "http://localhost:8001", f"http://{HOST}:{PORT}", f"http://localhost:{PORT}"}
 )
 SOURCE_ROLES: Final = (
     "government_record",
@@ -268,7 +269,7 @@ def _slug_for(headline: str, record_id: str) -> str:
 
 def create_app(
     dsn: str | None = None,
-    drafter_factory: DrafterFactory = ClaudeDrafter,
+    drafter_factory: DrafterFactory = default_drafter,
     *,
     fleet: Fleet | None = None,
     deployer: Deployer | None = None,
