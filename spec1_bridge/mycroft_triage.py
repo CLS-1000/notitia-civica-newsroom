@@ -279,11 +279,12 @@ def _freshness_anomaly_gate(packet: Spec1LeadPacket, now: datetime) -> GateResul
             False,
             f"{age.days} days old, window is {FRESHNESS_WINDOW_DAYS}",
         )
-    if packet.anomaly_score < MIN_ANOMALY_SCORE:
+    min_score = float(os.environ.get("MYCROFT_MIN_SCORE", str(MIN_ANOMALY_SCORE)))
+    if packet.anomaly_score < min_score:
         return GateResult(
             "freshness_anomaly",
             False,
-            f"score {packet.anomaly_score:.1f} is below {MIN_ANOMALY_SCORE:.1f}",
+            f"score {packet.anomaly_score:.1f} is below {min_score:.1f}",
         )
     return GateResult("freshness_anomaly", True)
 
@@ -582,7 +583,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--pdx1-min-priority",
-        default=os.environ.get("PDX1_MIN_PRIORITY", "STANDARD"),
+        default=os.environ.get("PDX1_MIN_PRIORITY", "ELEVATED"),
         choices=("MONITOR", "STANDARD", "ELEVATED"),
         help="Lowest pdx-1i priority band to import (default: STANDARD)",
     )

@@ -162,7 +162,7 @@ def _pdx1(env: Mapping[str, str]) -> Runner:
     def run(conn: psycopg.Connection[Any]) -> RunOutcome:
         from spec1_bridge.mycroft_triage import run_pdx1
 
-        priority = env.get("PDX1_MIN_PRIORITY") or "STANDARD"
+        priority = env.get("PDX1_MIN_PRIORITY") or "ELEVATED"
         return _report(run_pdx1(env["PDX1_STORE_PATH"], priority, conn, _enricher()))
 
     return run

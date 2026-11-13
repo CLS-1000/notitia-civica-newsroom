@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import uuid
 from pathlib import Path
 from typing import Any, Final
@@ -217,8 +218,9 @@ def register(
         family = request.query_params.get("family", "")
         if family and family not in FAMILIES:
             family = ""
+        default_min = os.environ.get("PENFIELD_DEFAULT_MIN_SCORE", "0")
         try:
-            score = float(request.query_params.get("min_score", "0"))
+            score = float(request.query_params.get("min_score", default_min))
         except ValueError:
             score = 0.0
         if not math.isfinite(score):
