@@ -149,7 +149,7 @@ class ClaudeDrafter:
 
     def _draft_via_ollama(self, lead_prompt: str, sources: list[DraftSource]) -> str:
         url = os.environ.get("OLLAMA_CHAT_URL", "http://localhost:11434/api/chat")
-        model = os.environ.get("OLLAMA_MODEL", "llama3.2:triage")
+        model = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
         payload = {
             "model": model,
             "stream": False,
